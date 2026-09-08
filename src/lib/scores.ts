@@ -1,6 +1,17 @@
 import { connectDB } from "@/lib/db";
 import { Submission } from "@/models/Submission";
 
+export interface QuestionRow {
+  username: string;
+  title: string;
+  titleSlug: string;
+  date: string;
+  acRate: number | null;
+  difficulty: string | null;
+  score: number;
+  lang: string;
+}
+
 export interface DailyRow {
   username: string;
   date: string;
@@ -14,50 +25,51 @@ export interface TotalRow {
   count: number;
 }
 
-// Score stored per question (one doc per user+titleSlug).
-// Defensive $group first so legacy per-submission docs don't double-count.
-const DEDUPE = {
-  $group: {
-    _id: { username: "$username", titleSlug: "$titleSlug" },
-    date: { $min: "$date" },
-    score: { $first: "$score" },
-  },
-};
-
-export async function getScores(): Promise<{ daily: DailyRow[]; totals: TotalRow[] }> {
+export async function getDayDetail(date: string): Promise<QuestionRow[]> {
   await connectDB();
-  const daily = await Submission.aggregate([
+  const docs = await Submission.find({ date, status: "Accepted" })
+    .sort({ score: -1 })
+    .lean();
+  return docs.map((d) => ({
+    username: (d as { username: string }).username,
+    title: (d as { title: string }).title ?? "",
+    titleSlug: (d as { titleSlug: string }).titleSlug,
+    date: (d as { date: string }).date,
+    acRate: (d as { acRate?: number | null }).acRate ?? null,
+    difficulty: (d as { difficulty?: string | null }).difficulty ?? null,
+    score: (d as { score: number }).score,
+    lang: (d as { lang?: string }).lang ?? "",
+  }));
+}
+
+export async function getActiveDates(): Promise<string[]> {
+  await connectDB();
+  const dates = await Submission.distinct("date", { status: "Accepted" });
+  return dates.sort();
+}
+
+export async function getOverallScores(): Promise<TotalRow[]> {
+  await connectDB();
+  const totals = await Submission.aggregate([
     { $match: { status: "Accepted" } },
-    DEDUPE,
     {
       $group: {
-        _id: { username: "$_id.username", date: "$date" },
+        _id: { username: "$username", titleSlug: "$titleSlug" },
+        score: { $first: "$score" },
+      },
+    },
+    {
+      $group: {
+        _id: "$_id.username",
         total: { $sum: "$score" },
         count: { $sum: 1 },
       },
     },
-    { $sort: { "_id.date": -1 } },
-  ]);
-  const rows = daily.map((d) => ({
-    username: d._id.username as string,
-    date: d._id.date as string,
-    total: Math.round(d.total * 100) / 100,
-    count: d.count as number,
-  }));
-  const totals = await Submission.aggregate([
-    { $match: { status: "Accepted" } },
-    DEDUPE,
-    {
-      $group: { _id: "$_id.username", total: { $sum: "$score" }, count: { $sum: 1 } },
-    },
     { $sort: { total: -1 } },
   ]);
-  return {
-    daily: rows,
-    totals: totals.map((t) => ({
-      username: t._id as string,
-      total: Math.round(t.total * 100) / 100,
-      count: t.count as number,
-    })),
-  };
+  return totals.map((t) => ({
+    username: t._id as string,
+    total: Math.round(t.total * 100) / 100,
+    count: t.count as number,
+  }));
 }

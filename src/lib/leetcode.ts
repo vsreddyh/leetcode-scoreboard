@@ -8,6 +8,11 @@ export interface RecentSubmission {
   lang: string;
 }
 
+export interface QuestionDetails {
+  acRate: number | null;
+  difficulty: string | null;
+}
+
 async function gql(query: string, variables: Record<string, unknown>) {
   const res = await fetch(GRAPHQL_URL, {
     method: "POST",
@@ -18,6 +23,7 @@ async function gql(query: string, variables: Record<string, unknown>) {
     },
     body: JSON.stringify({ query, variables }),
     next: { revalidate: 0 },
+    cache: "no-store",
   });
   if (res.status === 429) throw new Error("LeetCode rate limited (429)");
   if (!res.ok) throw new Error(`LeetCode HTTP ${res.status}`);
@@ -35,29 +41,40 @@ export async function getRecentSubmissions(
   return data?.data?.recentSubmissionList ?? [];
 }
 
-export async function getAcRate(titleSlug: string): Promise<number | null> {
+export async function getQuestionDetails(
+  titleSlug: string
+): Promise<QuestionDetails> {
   const data = await gql(
-    `query($titleSlug:String!){question(titleSlug:$titleSlug){acRate}}`,
+    `query($titleSlug:String!){question(titleSlug:$titleSlug){acRate difficulty}}`,
     { titleSlug }
   );
-  const rate = data?.data?.question?.acRate;
-  return typeof rate === "number" ? rate : null;
+  const q = data?.data?.question;
+  return {
+    acRate: typeof q?.acRate === "number" ? q.acRate : null,
+    difficulty: q?.difficulty ?? null,
+  };
 }
 
-/** Score = 100 - acceptanceRate. Harder problem (low acRate) = higher score. */
 export function scoreFor(acRate: number | null): number {
   if (acRate == null) return 0;
   return Math.round((100 - acRate) * 100) / 100;
 }
 
-/** Day bucket in IST (Asia/Kolkata): YYYY-MM-DD. */
 export function dayKey(tsSeconds: string | number): string {
   const d = new Date(Number(tsSeconds) * 1000);
-  const fmt = new Intl.DateTimeFormat("en-CA", {
+  return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Kolkata",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  });
-  return fmt.format(d); // en-CA yields YYYY-MM-DD
+  }).format(d);
+}
+
+export function todayIST(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 }

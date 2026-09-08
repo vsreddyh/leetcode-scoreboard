@@ -1,6 +1,11 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ThemeToggle } from "@/components/theme-toggle";
+import Link from "next/link";
 
 export default function AdminLogin() {
   const [password, setPassword] = useState("");
@@ -29,25 +34,33 @@ export default function AdminLogin() {
   }
 
   return (
-    <main className="max-w-sm w-full mx-auto px-4 py-10 font-sans">
-      <h1 className="text-2xl font-bold">Admin login</h1>
-      <form onSubmit={submit} className="mt-4 space-y-3">
-        <input
-          className="border rounded w-full p-2"
-          placeholder="Password"
-          type="password"
-          autoFocus
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        {error && <p className="text-red-600 text-sm">{error}</p>}
-        <button disabled={busy} className="rounded bg-black text-white px-4 py-2 w-full disabled:bg-gray-400">
-          {busy ? "Logging in…" : "Login"}
-        </button>
-      </form>
-      <p className="text-xs text-gray-500 mt-4 text-center">
-        <a href="/dashboard" className="underline">← Back to dashboard</a>
-      </p>
+    <main className="flex-1 flex items-center justify-center px-4 py-10">
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <CardTitle>Admin login</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={submit} className="space-y-3">
+            <Input
+              placeholder="Password"
+              type="password"
+              autoFocus
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            {error && <p className="text-destructive text-sm">{error}</p>}
+            <Button type="submit" className="w-full" disabled={busy}>
+              {busy ? "Logging in…" : "Login"}
+            </Button>
+          </form>
+          <div className="mt-4 flex justify-center gap-2">
+            <Link href="/dashboard">
+              <Button variant="ghost" size="sm">← Dashboard</Button>
+            </Link>
+            <ThemeToggle />
+          </div>
+        </CardContent>
+      </Card>
     </main>
   );
 }
