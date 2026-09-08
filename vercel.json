@@ -7,14 +7,6 @@
     {
       "path": "/api/refresh?secret=819ed20d36031eb567f5a52acb9c719ba954b5258cf1bdbf698a5c7c5ceaf3db",
       "schedule": "0 18 * * *"
-    },
-    {
-      "path": "/api/notify-digest?secret=819ed20d36031eb567f5a52acb9c719ba954b5258cf1bdbf698a5c7c5ceaf3db",
-      "schedule": "0 6 * * *"
-    },
-    {
-      "path": "/api/notify-digest?secret=819ed20d36031eb567f5a52acb9c719ba954b5258cf1bdbf698a5c7c5ceaf3db",
-      "schedule": "0 18 * * *"
     }
   ]
 }
