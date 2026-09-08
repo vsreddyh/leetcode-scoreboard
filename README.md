@@ -48,7 +48,9 @@ CRON_SECRET=another-long-random-string
 
 ## Cron
 
-`vercel.json` runs `GET /api/sync?secret=...` on `*/5 * * * *`. Replace the placeholder with the real `CRON_SECRET` value on deploy. Manual cron test:
+- **Every 5 min (sync):** [cron-job.org](https://cron-job.org) → URL `https://<your-app>.vercel.app/api/sync?secret=<CRON_SECRET>`, every 5 minutes.
+- **EOD refresh:** Vercel cron `0 18 * * *` UTC (23:30 IST) → `/api/refresh?secret=__CRON_SECRET__` (replace placeholder in `vercel.json` on deploy).
+- Manual test:
 
 ```bash
 curl "http://localhost:3000/api/sync?secret=$CRON_SECRET"
