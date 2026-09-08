@@ -13,6 +13,13 @@ function toHex(buf: ArrayBuffer): string {
     .join("");
 }
 
+function ctEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
 async function hmac(payload: string): Promise<string> {
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey(
@@ -25,13 +32,6 @@ async function hmac(payload: string): Promise<string> {
   return toHex(await crypto.subtle.sign("HMAC", key, enc.encode(payload)));
 }
 
-function ctEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
-
 export async function signSession(username: string): Promise<string> {
   const exp = Date.now() + 1000 * 60 * 60 * 12; // 12h
   return `${username}.${exp}.${await hmac(`${username}.${exp}`)}`;
@@ -42,15 +42,28 @@ export async function verifySession(cookieVal: string | undefined): Promise<stri
   const parts = cookieVal.split(".");
   if (parts.length !== 3) return null;
   const [username, exp, sig] = parts;
-  if (Number(exp) < Date.now()) return null;
+  if (!/^\d+$/.test(exp) || Number(exp) < Date.now()) return null;
   const expected = await hmac(`${username}.${exp}`);
   if (!ctEqual(sig, expected)) return null;
   return username;
 }
 
-export function checkCredentials(password: string): boolean {
+/** Password login needs its own compare that works the same on both runtimes. */
+export async function checkCredentials(password: string): Promise<boolean> {
   const p = process.env.ADMIN_PASSWORD ?? "";
-  return password === p && p.length > 0;
+  if (!p) return false;
+  try {
+    const a = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(password));
+    const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(p));
+    return ctEqual(toHex(a), toHex(b));
+  } catch {
+    return false;
+  }
 }
 
 export const ADMIN_COOKIE = COOKIE;
+
+/** Constant-time string comparison for secrets (Edge + Node safe). */
+export function safeEqual(a: string, b: string): boolean {
+  return ctEqual(a, b);
+}

@@ -3,7 +3,7 @@ import { ADMIN_COOKIE, checkCredentials, signSession } from "@/lib/admin";
 
 export async function POST(req: Request) {
   const { password } = await req.json().catch(() => ({}));
-  if (!checkCredentials(String(password ?? ""))) {
+  if (!(await checkCredentials(String(password ?? "")))) {
     return NextResponse.json({ ok: false, error: "Invalid credentials" }, { status: 401 });
   }
   const res = NextResponse.json({ ok: true });

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { ADMIN_COOKIE, verifySession } from "@/lib/admin";
+import { ADMIN_COOKIE, safeEqual, verifySession } from "@/lib/admin";
 import { connectDB } from "@/lib/db";
 import { getAcRate, scoreFor } from "@/lib/leetcode";
 import { Submission } from "@/models/Submission";
@@ -43,8 +43,10 @@ async function doRefresh() {
 async function authed(req: Request, cookieVal: string | undefined, url: URL): Promise<boolean> {
   if (await verifySession(cookieVal)) return true;
   const secret = process.env.CRON_SECRET ?? "";
-  return !!secret && (url.searchParams.get("secret") === secret ||
-    req.headers.get("authorization") === `Bearer ${secret}`);
+  return (
+    (!!secret && safeEqual(url.searchParams.get("secret") ?? "", secret)) ||
+    (!!secret && safeEqual(req.headers.get("authorization") ?? "", `Bearer ${secret}`))
+  );
 }
 
 export async function GET(req: Request) {

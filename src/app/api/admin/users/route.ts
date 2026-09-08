@@ -20,7 +20,11 @@ export async function POST(req: Request) {
   if (!(await authed(c))) return NextResponse.json({ ok: false }, { status: 401 });
   const { username } = await req.json().catch(() => ({}));
   const u = String(username ?? "").trim().toLowerCase();
-  if (!u) return NextResponse.json({ ok: false, error: "username required" }, { status: 400 });
+  if (!/^[a-z0-9_.-]{1,50}$/.test(u))
+    return NextResponse.json(
+      { ok: false, error: "username: ≤50 chars, letters/digits/_.-" },
+      { status: 400 }
+    );
   await connectDB();
   await TrackedUser.updateOne({ username: u }, { $setOnInsert: { username: u } }, { upsert: true });
   return NextResponse.json({ ok: true, users: await getTrackedUsernames() });

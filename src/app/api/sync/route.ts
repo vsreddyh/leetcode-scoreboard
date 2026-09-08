@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { ADMIN_COOKIE, verifySession } from "@/lib/admin";
+import { ADMIN_COOKIE, safeEqual, verifySession } from "@/lib/admin";
 import { connectDB } from "@/lib/db";
 import {
   dayKey,
@@ -28,7 +28,7 @@ async function doSync() {
       const typed = existing as { acRate?: number | null } | null;
       const acRate = typed?.acRate ?? (await getAcRate(s.titleSlug));
       const score = scoreFor(acRate);
-      await sleep(300); // be polite to LeetCode (~3 req/s max)
+      if (typed == null) await sleep(300); // throttle only real LeetCode fetches
       await Submission.updateOne(
         { username, titleSlug: s.titleSlug },
         {
@@ -57,17 +57,20 @@ async function doSync() {
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-function isAuthorized(req: Request, cookieVal: string | undefined): Promise<boolean> {
+function isAuthorized(req: Request, cookieVal: string | undefined, url?: URL): Promise<boolean> {
   return verifySession(cookieVal).then((user) => {
     if (user) return true;
     const secret = process.env.CRON_SECRET ?? "";
-    return !!secret && req.headers.get("authorization") === `Bearer ${secret}`;
+    return (
+      (!!secret && !!url && safeEqual(url.searchParams.get("secret") ?? "", secret)) ||
+      (!!secret && safeEqual(req.headers.get("authorization") ?? "", `Bearer ${secret}`))
+    );
   });
 }
 
 export async function POST(req: Request) {
   const cookieStore = await cookies();
-  if (!(await isAuthorized(req, cookieStore.get(ADMIN_COOKIE)?.value)))
+  if (!(await isAuthorized(req, cookieStore.get(ADMIN_COOKIE)?.value, new URL(req.url))))
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   return NextResponse.json(await doSync());
 }
@@ -75,12 +78,8 @@ export async function POST(req: Request) {
 // GET /api/sync — cron-job.org / Vercel Cron with ?secret= (or Bearer)
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const secret = process.env.CRON_SECRET ?? "";
   const cookieStore = await cookies();
-  const ok =
-    (await verifySession(cookieStore.get(ADMIN_COOKIE)?.value)) ||
-    (!!secret && (url.searchParams.get("secret") === secret ||
-      req.headers.get("authorization") === `Bearer ${secret}`));
-  if (!ok) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (!(await isAuthorized(req, cookieStore.get(ADMIN_COOKIE)?.value, url)))
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   return NextResponse.json(await doSync());
 }
