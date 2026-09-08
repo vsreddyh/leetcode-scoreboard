@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -132,37 +133,42 @@ export function NotifyToggle() {
       <DropdownMenuContent align="end" className="w-64">
         {subscribed ? (
           <>
-            <DropdownMenuLabel>
-              Notifications: {MODE_LABELS[mode]}
-            </DropdownMenuLabel>
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>
+                Notifications: {MODE_LABELS[mode]}
+              </DropdownMenuLabel>
+            </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-              Switch mode:
-            </DropdownMenuLabel>
-            {(Object.entries(MODE_LABELS) as [Mode, string][]).map(([key, label]) => (
-              <DropdownMenuItem
-                key={key}
-                disabled={busy || key === mode}
-                onClick={() => subscribe(key)}
-              >
-                {key === mode ? "✓ " : ""}{label}
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                Switch mode:
+              </DropdownMenuLabel>
+              {(Object.entries(MODE_LABELS) as [Mode, string][]).map(([key, label]) => (
+                <DropdownMenuItem
+                  key={key}
+                  disabled={busy || key === mode}
+                  onClick={() => subscribe(key)}
+                >
+                  {key === mode ? "✓ " : ""}{label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem variant="destructive" onClick={unsubscribe} disabled={busy}>
+                Disable notifications
               </DropdownMenuItem>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onClick={unsubscribe} disabled={busy}>
-              Disable notifications
-            </DropdownMenuItem>
+            </DropdownMenuGroup>
           </>
         ) : (
-          <>
+          <DropdownMenuGroup>
             <DropdownMenuLabel>Enable notifications</DropdownMenuLabel>
-            <DropdownMenuSeparator />
             {(Object.entries(MODE_LABELS) as [Mode, string][]).map(([key, label]) => (
               <DropdownMenuItem key={key} disabled={busy} onClick={() => subscribe(key)}>
                 {label}
               </DropdownMenuItem>
             ))}
-          </>
+          </DropdownMenuGroup>
         )}
       </DropdownMenuContent>
     </DropdownMenu>

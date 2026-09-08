@@ -78,3 +78,13 @@ export function todayIST(): string {
     day: "2-digit",
   }).format(new Date());
 }
+
+/** Fixed season start (IST date bucket). Sync keeps everything on/after this. */
+export const SEASON_START = "2026-09-08";
+
+/** Current IST wall-clock minutes since midnight. */
+export function istMinutesNow(): number {
+  const now = new Date();
+  const ist = new Date(now.getTime() + (5 * 60 + 30) * 60 * 1000);
+  return ist.getUTCHours() * 60 + ist.getUTCMinutes();
+}

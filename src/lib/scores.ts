@@ -1,5 +1,8 @@
 import { connectDB } from "@/lib/db";
+import { getQuestionDetails, scoreFor } from "@/lib/leetcode";
 import { Submission } from "@/models/Submission";
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export interface QuestionRow {
   username: string;
@@ -72,4 +75,32 @@ export async function getOverallScores(): Promise<TotalRow[]> {
     total: Math.round(t.total * 100) / 100,
     count: t.count as number,
   }));
+}
+
+/**
+ * Re-fetch acRate/difficulty for every doc dated `date` and recompute scores.
+ * Shared by the manual /api/refresh endpoint and the in-sync EOD auto-refresh.
+ */
+export async function refreshDayScores(
+  date: string
+): Promise<{ updated: number; total: number }> {
+  await connectDB();
+  const docs = await Submission.find({ date }).lean();
+  let updated = 0;
+  for (const d of docs) {
+    const doc = d as { username: string; titleSlug: string };
+    try {
+      const { acRate, difficulty } = await getQuestionDetails(doc.titleSlug);
+      if (acRate == null) continue;
+      await Submission.updateOne(
+        { username: doc.username, titleSlug: doc.titleSlug },
+        { $set: { acRate, difficulty, score: scoreFor(acRate) } }
+      );
+      updated++;
+    } catch {
+      // rate-limited or gone — leave stale value, retry tomorrow
+    }
+    await sleep(300);
+  }
+  return { updated, total: docs.length };
 }

@@ -2,35 +2,17 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { ADMIN_COOKIE, safeEqual, verifySession } from "@/lib/admin";
 import { connectDB } from "@/lib/db";
-import { getQuestionDetails, scoreFor, todayIST } from "@/lib/leetcode";
-import { Submission } from "@/models/Submission";
+import { todayIST } from "@/lib/leetcode";
+import { refreshDayScores } from "@/lib/scores";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
 async function doRefresh() {
   await connectDB();
   const today = todayIST();
-  const docs = await Submission.find({ date: today }).lean();
-  let updated = 0;
-  for (const d of docs) {
-    const doc = d as { username: string; titleSlug: string };
-    try {
-      const { acRate, difficulty } = await getQuestionDetails(doc.titleSlug);
-      if (acRate == null) continue;
-      await Submission.updateOne(
-        { username: doc.username, titleSlug: doc.titleSlug },
-        { $set: { acRate, difficulty, score: scoreFor(acRate) } }
-      );
-      updated++;
-    } catch {
-      // rate-limited or gone — leave stale value, retry tomorrow
-    }
-    await sleep(300);
-  }
-  return { ok: true, updated, total: docs.length, date: today };
+  const { updated, total } = await refreshDayScores(today);
+  return { ok: true, updated, total, date: today };
 }
 
 async function authed(
