@@ -39,11 +39,9 @@ async function doSync() {
             date: dayKey(ts),
             status: "Accepted",
             lang: s.lang,
-            acRate,
-            difficulty,
             score,
           },
-          $set: { difficulty },
+          $set: { difficulty, acRate },
           $inc: { submissions: existing ? 1 : 0 },
         },
         { upsert: true }
