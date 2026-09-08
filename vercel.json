@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/sync?secret=__CRON_SECRET__",
-      "schedule": "*/5 * * * *"
+      "schedule": "30 17 * * *"
     },
     {
       "path": "/api/refresh?secret=__CRON_SECRET__",
