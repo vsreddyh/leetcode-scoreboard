@@ -57,29 +57,29 @@ async function doSync() {
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-function isAuthorized(req: Request, cookieVal: string | undefined): boolean {
-  if (verifySession(cookieVal)) return true;
-  const secret = process.env.CRON_SECRET ?? "";
-  if (secret && req.headers.get("authorization") === `Bearer ${secret}`) return true;
-  // Vercel Cron sends no auth by default; allow GET only when CRON_SECRET is unset (dev)
-  return false;
+function isAuthorized(req: Request, cookieVal: string | undefined): Promise<boolean> {
+  return verifySession(cookieVal).then((user) => {
+    if (user) return true;
+    const secret = process.env.CRON_SECRET ?? "";
+    return !!secret && req.headers.get("authorization") === `Bearer ${secret}`;
+  });
 }
 
 export async function POST(req: Request) {
   const cookieStore = await cookies();
-  if (!isAuthorized(req, cookieStore.get(ADMIN_COOKIE)?.value))
+  if (!(await isAuthorized(req, cookieStore.get(ADMIN_COOKIE)?.value)))
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   return NextResponse.json(await doSync());
 }
 
-// GET /api/sync — for Vercel Cron (sends Authorization header via vercel.json? no — use query secret fallback)
+// GET /api/sync — cron-job.org / Vercel Cron with ?secret= (or Bearer)
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const secret = process.env.CRON_SECRET ?? "";
   const cookieStore = await cookies();
   const ok =
-    verifySession(cookieStore.get(ADMIN_COOKIE)?.value) ||
-    (secret && (url.searchParams.get("secret") === secret ||
+    (await verifySession(cookieStore.get(ADMIN_COOKIE)?.value)) ||
+    (!!secret && (url.searchParams.get("secret") === secret ||
       req.headers.get("authorization") === `Bearer ${secret}`));
   if (!ok) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   return NextResponse.json(await doSync());

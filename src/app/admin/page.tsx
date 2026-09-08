@@ -6,7 +6,7 @@ import { Submission } from "@/models/Submission";
 import UserManager from "./UserManager";
 
 export default async function Admin() {
-  const user = verifySession((await cookies()).get(ADMIN_COOKIE)?.value);
+  const user = await verifySession((await cookies()).get(ADMIN_COOKIE)?.value);
   if (!user) redirect("/admin/login");
   await connectDB().catch(() => {});
   const subs = await Submission.find()

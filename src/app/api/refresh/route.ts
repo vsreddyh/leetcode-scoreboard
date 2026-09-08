@@ -40,8 +40,8 @@ async function doRefresh() {
   return { ok: true, updated, total: docs.length, date: todayIST };
 }
 
-function authed(req: Request, cookieVal: string | undefined, url: URL): boolean {
-  if (verifySession(cookieVal)) return true;
+async function authed(req: Request, cookieVal: string | undefined, url: URL): Promise<boolean> {
+  if (await verifySession(cookieVal)) return true;
   const secret = process.env.CRON_SECRET ?? "";
   return !!secret && (url.searchParams.get("secret") === secret ||
     req.headers.get("authorization") === `Bearer ${secret}`);
@@ -50,13 +50,13 @@ function authed(req: Request, cookieVal: string | undefined, url: URL): boolean 
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const c = (await cookies()).get(ADMIN_COOKIE)?.value;
-  if (!authed(req, c, url)) return NextResponse.json({ ok: false }, { status: 401 });
+  if (!(await authed(req, c, url))) return NextResponse.json({ ok: false }, { status: 401 });
   return NextResponse.json(await doRefresh());
 }
 
 export async function POST(req: Request) {
   const url = new URL(req.url);
   const c = (await cookies()).get(ADMIN_COOKIE)?.value;
-  if (!authed(req, c, url)) return NextResponse.json({ ok: false }, { status: 401 });
+  if (!(await authed(req, c, url))) return NextResponse.json({ ok: false }, { status: 401 });
   return NextResponse.json(await doRefresh());
 }

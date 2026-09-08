@@ -7,7 +7,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Invalid credentials" }, { status: 401 });
   }
   const res = NextResponse.json({ ok: true });
-  res.cookies.set(ADMIN_COOKIE, signSession("admin"), {
+  res.cookies.set(ADMIN_COOKIE, await signSession("admin"), {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
