@@ -50,7 +50,14 @@ export function scoreFor(acRate: number | null): number {
   return Math.round((100 - acRate) * 100) / 100;
 }
 
+/** Day bucket in IST (Asia/Kolkata): YYYY-MM-DD. */
 export function dayKey(tsSeconds: string | number): string {
   const d = new Date(Number(tsSeconds) * 1000);
-  return d.toISOString().slice(0, 10); // YYYY-MM-DD UTC
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return fmt.format(d); // en-CA yields YYYY-MM-DD
 }

@@ -1,6 +1,6 @@
 # LeetCode Scoreboard
 
-Next.js + MongoDB scoreboard. **Score per Accepted problem = 100 − acceptance rate** (harder = more points). **Daily score = sum per user per day (UTC).**
+Next.js + MongoDB scoreboard. **Score per Accepted problem = 100 − acceptance rate** (harder = more points). **Daily score = sum per user per day (IST).**
 
 ## Architecture
 
@@ -58,6 +58,7 @@ curl "http://localhost:3000/api/sync?secret=$CRON_SECRET"
 
 - Only `Accepted` submissions score; WA/CE/etc. are ignored (not stored).
 - Score stored **per question** (one doc per user+titleSlug, dated at first Accept); resubmits only bump a counter, never add points. Scores API also dedupes legacy per-submission docs.
-- Dates are UTC `YYYY-MM-DD` buckets.
+- Dates are IST (`Asia/Kolkata`) `YYYY-MM-DD` buckets.
+- EOD refresh: `/api/refresh` re-fetches `acRate` for **today's (IST) questions only** at 23:30 IST (`0 18 * * *` UTC cron), recomputing scores.
 - `recentSubmissionList` caps at 20/user/sync; history accumulates in Mongo over time.
 - Polite throttling (~300ms between problem lookups, 1s between users); `429` surfaces as sync failure, retry next tick.

@@ -8,7 +8,7 @@ const SubmissionSchema = new Schema(
     title: String,
     titleSlug: { type: String, required: true },
     timestamp: { type: Number, required: true },
-    date: { type: String, index: true, required: true }, // YYYY-MM-DD of first accept (UTC)
+    date: { type: String, index: true, required: true }, // YYYY-MM-DD of first accept (IST)
     status: { type: String, default: "Accepted" },
     lang: String,
     acRate: { type: Number, default: null },

@@ -19,7 +19,7 @@ export default async function Dashboard() {
     <main className="max-w-3xl mx-auto p-8 font-sans">
       <h1 className="text-3xl font-bold">Scoreboard (public)</h1>
       <p className="text-sm text-gray-500 mt-1">
-        Score per Accepted problem = 100 − acceptance rate. Daily score = sum per day (UTC).
+        Score per Accepted problem = 100 − acceptance rate. Daily score = sum per day (IST).
         Auto-synced every 5 min.
       </p>
       <h2 className="text-xl font-semibold mt-8">Totals</h2>

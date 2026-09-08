@@ -3,6 +3,10 @@
     {
       "path": "/api/sync?secret=__CRON_SECRET__",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/refresh?secret=__CRON_SECRET__",
+      "schedule": "0 18 * * *"
     }
   ]
 }
