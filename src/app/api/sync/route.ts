@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { ADMIN_COOKIE, safeEqual, verifySession } from "@/lib/admin";
 import { connectDB } from "@/lib/db";
-import { dayKey, getQuestionDetails, getRecentSubmissions, scoreFor } from "@/lib/leetcode";
+import { dayKey, getQuestionDetails, getRecentSubmissions, scoreFor, todayIST } from "@/lib/leetcode";
 import { getTrackedUsernames } from "@/lib/users";
 import { Submission } from "@/models/Submission";
 
@@ -10,6 +10,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function doSync() {
   await connectDB();
+  const cutoff = todayIST();
+  // Drop any pre-existing data before today
+  await Submission.deleteMany({ date: { $lt: cutoff } });
   const results: Record<string, number> = {};
   for (const username of await getTrackedUsernames()) {
     const recents = await getRecentSubmissions(username, 20);
@@ -17,6 +20,8 @@ async function doSync() {
     for (const s of recents) {
       if (s.statusDisplay !== "Accepted") continue;
       const ts = Number(s.timestamp);
+      const date = dayKey(ts);
+      if (date < cutoff) continue; // skip pre-today
       const existing = await Submission.findOne({ username, titleSlug: s.titleSlug }).lean();
       const typed = existing as { acRate?: number | null; difficulty?: string | null } | null;
       let acRate = typed?.acRate ?? null;
@@ -36,7 +41,7 @@ async function doSync() {
             title: s.title,
             titleSlug: s.titleSlug,
             timestamp: ts,
-            date: dayKey(ts),
+            date,
             status: "Accepted",
             lang: s.lang,
             score,
