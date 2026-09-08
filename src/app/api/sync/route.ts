@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { ADMIN_COOKIE, safeEqual, verifySession } from "@/lib/admin";
 import { connectDB } from "@/lib/db";
 import { dayKey, getQuestionDetails, getRecentSubmissions, scoreFor, todayIST } from "@/lib/leetcode";
+import { notifyAfterSync } from "@/lib/push";
 import { getTrackedUsernames } from "@/lib/users";
 import { Submission } from "@/models/Submission";
 
@@ -56,6 +57,8 @@ async function doSync() {
     results[username] = saved;
     await sleep(1000);
   }
+  // Fire push notifications (per-sync + per-problem subscribers)
+  notifyAfterSync(results).catch(() => {});
   return { ok: true, synced: results };
 }
 

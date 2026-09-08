@@ -7,6 +7,14 @@
     {
       "path": "/api/refresh?secret=__CRON_SECRET__",
       "schedule": "0 18 * * *"
+    },
+    {
+      "path": "/api/notify-digest?secret=__CRON_SECRET__",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/notify-digest?secret=__CRON_SECRET__",
+      "schedule": "0 18 * * *"
     }
   ]
 }

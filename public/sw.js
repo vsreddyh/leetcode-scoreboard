@@ -19,18 +19,13 @@ self.addEventListener("fetch", (event) => {
   const req = event.request;
   const url = new URL(req.url);
   if (req.method !== "GET" || url.origin !== self.location.origin) return;
-
-  // API: network only (never serve stale scores)
   if (url.pathname.startsWith("/api/")) return;
-
-  // Navigations: network-first, fall back to cached shell
   if (req.mode === "navigate") {
     event.respondWith(
       fetch(req)
         .then((res) => {
           const copy = req.clone();
           caches.open(VERSION).then((c) => c.put(copy, res.clone()));
-          // res is already a clone-safe stream copy? put() consumes clone; return res
           return res;
         })
         .catch(async () => {
@@ -40,8 +35,6 @@ self.addEventListener("fetch", (event) => {
     );
     return;
   }
-
-  // Static assets: stale-while-revalidate
   if (/\.(png|svg|ico|css|js|woff2?)$/.test(url.pathname)) {
     event.respondWith(
       (async () => {
@@ -57,4 +50,29 @@ self.addEventListener("fetch", (event) => {
       })()
     );
   }
+});
+
+self.addEventListener("push", (event) => {
+  const data = event.data?.json() ?? {};
+  event.waitUntil(
+    self.registration.showNotification(data.title ?? "LC Board", {
+      body: data.body ?? "",
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      data: { url: data.url ?? "/dashboard" },
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url ?? "/dashboard";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window" }).then((clients) => {
+      for (const client of clients) {
+        if (client.url.includes(url) && "focus" in client) return client.focus();
+      }
+      return self.clients.openWindow(url);
+    })
+  );
 });

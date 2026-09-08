@@ -17,6 +17,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { NotifyToggle } from "@/components/notify-toggle";
 import Link from "next/link";
 
 interface Question {
@@ -132,6 +133,7 @@ export default function Dashboard() {
           <Link href="/admin">
             <Button variant="outline" size="sm">Admin</Button>
           </Link>
+          <NotifyToggle />
           <ThemeToggle />
         </div>
       </div>
