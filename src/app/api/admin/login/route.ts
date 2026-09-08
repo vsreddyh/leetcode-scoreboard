@@ -1,0 +1,18 @@
+import { NextResponse } from "next/server";
+import { ADMIN_COOKIE, checkCredentials, signSession } from "@/lib/admin";
+
+export async function POST(req: Request) {
+  const { password } = await req.json().catch(() => ({}));
+  if (!checkCredentials(String(password ?? ""))) {
+    return NextResponse.json({ ok: false, error: "Invalid credentials" }, { status: 401 });
+  }
+  const res = NextResponse.json({ ok: true });
+  res.cookies.set(ADMIN_COOKIE, signSession("admin"), {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 60 * 12,
+  });
+  return res;
+}
