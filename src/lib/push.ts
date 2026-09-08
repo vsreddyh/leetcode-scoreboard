@@ -45,74 +45,90 @@ async function sendToSub(
   }
 }
 
-/** Send notifications for per-sync and per-problem modes (called after each sync). */
+/** Current IST hour*60+minute. */
+function istMinutesNow(): number {
+  const now = new Date();
+  const ist = new Date(now.getTime() + (5 * 60 + 30) * 60 * 1000);
+  return ist.getUTCHours() * 60 + ist.getUTCMinutes();
+}
+
+/** True if within ±5 min of 11:30 (690 min) or 23:30 (1410 min). */
+function isDigestWindow(): boolean {
+  const m = istMinutesNow();
+  return Math.abs(m - 690) <= 5 || Math.abs(m - 1410) <= 5;
+}
+
+/**
+ * Called after every sync. Sends:
+ * - per-sync: one summary notification if any new solves
+ * - per-problem: one notification per user with new solves
+ * - twice-daily: digest only when within ±5 min of 11:30 AM/PM IST
+ */
 export async function notifyAfterSync(synced: Record<string, number>) {
   ensureConfig();
   await connectDB();
   const subs = (await PushSub.find().lean()) as unknown as RawSub[];
   if (subs.length === 0) return;
 
-  const hasNew = Object.values(synced).some((n) => n > 0);
-  if (!hasNew) return;
-
-  const summaryParts: string[] = [];
-  const detailParts: { user: string; count: number }[] = [];
-  for (const [user, count] of Object.entries(synced)) {
-    if (count > 0) {
-      summaryParts.push(`${user}: ${count}`);
-      detailParts.push({ user, count });
-    }
-  }
-
-  const perSyncSubs = subs.filter((s) => s.mode === "per-sync");
-  const perProblemSubs = subs.filter((s) => s.mode === "per-problem");
-
-  // per-sync: one notification per user with count
   const tasks: Promise<void>[] = [];
-  if (perSyncSubs.length > 0) {
-    const payload: NotifyPayload = {
-      title: "LC Board — New solves!",
-      body: summaryParts.join(", "),
-      url: "/dashboard",
-    };
-    for (const sub of perSyncSubs) tasks.push(sendToSub(sub, payload));
-  }
 
-  // per-problem: individual notifications (bounded to 5 per user per sync to avoid spam)
-  if (perProblemSubs.length > 0) {
-    for (const { user, count } of detailParts) {
+  // --- per-sync + per-problem: only when new solves ---
+  const hasNew = Object.values(synced).some((n) => n > 0);
+  if (hasNew) {
+    const summaryParts: string[] = [];
+    const detailParts: { user: string; count: number }[] = [];
+    for (const [user, count] of Object.entries(synced)) {
+      if (count > 0) {
+        summaryParts.push(`${user}: ${count}`);
+        detailParts.push({ user, count });
+      }
+    }
+
+    const perSyncSubs = subs.filter((s) => s.mode === "per-sync");
+    const perProblemSubs = subs.filter((s) => s.mode === "per-problem");
+
+    if (perSyncSubs.length > 0) {
       const payload: NotifyPayload = {
-        title: `LC Board — ${user}`,
-        body: `Solved ${count} new problem${count > 1 ? "s" : ""} today!`,
+        title: "LC Board — New solves!",
+        body: summaryParts.join(", "),
         url: "/dashboard",
       };
-      for (const sub of perProblemSubs) tasks.push(sendToSub(sub, payload));
+      for (const sub of perSyncSubs) tasks.push(sendToSub(sub, payload));
+    }
+
+    if (perProblemSubs.length > 0) {
+      for (const { user, count } of detailParts) {
+        const payload: NotifyPayload = {
+          title: `LC Board — ${user}`,
+          body: `Solved ${count} new problem${count > 1 ? "s" : ""} today!`,
+          url: "/dashboard",
+        };
+        for (const sub of perProblemSubs) tasks.push(sendToSub(sub, payload));
+      }
     }
   }
 
-  await Promise.allSettled(tasks);
-}
+  // --- twice-daily: send digest only during 11:30 AM/PM IST window ---
+  if (isDigestWindow()) {
+    const digestSubs = subs.filter((s) => s.mode === "twice-daily");
+    if (digestSubs.length > 0) {
+      const { getOverallScores } = await import("@/lib/scores");
+      const totals = await getOverallScores();
+      if (totals.length > 0) {
+        const lines = totals.map(
+          (t) => `${t.username}: ${t.total} pts (${t.count} problems)`
+        );
+        const payload: NotifyPayload = {
+          title: "LC Board — Daily digest",
+          body: lines.join(" | "),
+          url: "/dashboard",
+        };
+        for (const sub of digestSubs) tasks.push(sendToSub(sub, payload));
+      }
+    }
+  }
 
-/** Send twice-daily digest (called by cron at 11:30 AM/PM IST). */
-export async function notifyDigest() {
-  ensureConfig();
-  await connectDB();
-  const subs = (await PushSub.find({ mode: "twice-daily" }).lean()) as unknown as RawSub[];
-  if (subs.length === 0) return;
-
-  const { getOverallScores } = await import("@/lib/scores");
-  const totals = await getOverallScores();
-  if (totals.length === 0) return;
-
-  const lines = totals.map((t) => `${t.username}: ${t.total} pts (${t.count} problems)`);
-  const payload: NotifyPayload = {
-    title: "LC Board — Daily digest",
-    body: lines.join(" | "),
-    url: "/dashboard",
-  };
-
-  const tasks = subs.map((sub) => sendToSub(sub, payload));
-  await Promise.allSettled(tasks);
+  if (tasks.length > 0) await Promise.allSettled(tasks);
 }
 
 export function getVapidPublicKey(): string {
