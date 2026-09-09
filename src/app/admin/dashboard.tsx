@@ -36,6 +36,7 @@ export default function AdminDashboard() {
   const [busy, setBusy] = useState(false);
   const [subs, setSubs] = useState<Sub[]>([]);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [confirmClearPush, setConfirmClearPush] = useState(false);
 
   async function loadUsers() {
     const res = await fetch("/api/admin/users");
@@ -95,7 +96,11 @@ export default function AdminDashboard() {
       const res = await fetch("/api/sync", { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        setMsg({ text: `Sync done: ${JSON.stringify(data.synced ?? {})}`, err: false });
+        const n = data.notify as { sent?: number; failed?: number; subs?: number; cleaned?: number; errors?: string[] } | undefined;
+        const notifyStr = n
+          ? `, notify: ${n.sent ?? 0} sent / ${n.failed ?? 0} failed (${n.subs ?? 0} subs${(n.cleaned ?? 0) > 0 ? `, ${n.cleaned} dead removed` : ""})${(n.errors?.length ?? 0) > 0 ? ` — ${n.errors!.join("; ")}` : ""}`
+          : "";
+        setMsg({ text: `Sync done: ${JSON.stringify(data.synced ?? {})}${notifyStr}`, err: false });
         loadSubs();
       } else {
         setMsg({
@@ -103,6 +108,43 @@ export default function AdminDashboard() {
           err: true,
         });
       }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function testNotify() {
+    if (busy) return;
+    setBusy(true);
+    setMsg({ text: "Sending test notification to all subscribers…", err: false });
+    try {
+      const res = await fetch("/api/notify-test", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setMsg({ text: `Test: ${data.sent ?? 0} sent / ${data.failed ?? 0} failed (${data.subs ?? 0} subs${(data.cleaned ?? 0) > 0 ? `, ${data.cleaned} dead removed` : ""})${(data.errors?.length ?? 0) > 0 ? ` — ${data.errors.join("; ")}` : ""}`, err: (data.failed ?? 0) > 0 });
+      } else {
+        setMsg({ text: `Test failed: ${data.error ?? "unknown error"} — check VAPID env vars on the server.`, err: true });
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function clearPushSubs() {
+    if (!confirmClearPush) {
+      setConfirmClearPush(true);
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch("/api/notify-test", { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setMsg({ text: `Removed ${data.deleted ?? 0} push subscription(s). Users must re-enable notifications.`, err: false });
+      } else {
+        setMsg({ text: `Clear failed: ${data.error ?? "unknown error"}`, err: true });
+      }
+      setConfirmClearPush(false);
     } finally {
       setBusy(false);
     }
@@ -183,6 +225,16 @@ export default function AdminDashboard() {
           <div className="mt-4 flex flex-wrap gap-2">
             <Button onClick={sync} disabled={busy}>
               {busy ? "Syncing…" : "Run sync now"}
+            </Button>
+            <Button variant="outline" onClick={testNotify} disabled={busy}>
+              Send test notification
+            </Button>
+            <Button
+              variant={confirmClearPush ? "destructive" : "outline"}
+              onClick={clearPushSubs}
+              disabled={busy}
+            >
+              {confirmClearPush ? "Confirm clear push subs?" : "Clear push subscriptions"}
             </Button>
             <Button
               variant={confirmClear ? "destructive" : "outline"}

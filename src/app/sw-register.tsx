@@ -3,7 +3,10 @@ import { useEffect } from "react";
 
 export default function SWRegister() {
   useEffect(() => {
-    if ("serviceWorker" in navigator && process.env.NODE_ENV === "production") {
+    // Register in all environments so push can be tested via `npm run dev`
+    // as well as in production. The SW only caches same-origin GETs and
+    // skips /api/*, so dev registration is safe.
+    if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").catch(() => {});
     }
   }, []);

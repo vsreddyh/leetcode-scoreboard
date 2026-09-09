@@ -80,11 +80,19 @@ async function doSync() {
     results[username] = saved;
     await sleep(1000);
   }
-  // Fire push notifications (per-sync + per-problem subscribers)
-  notifyAfterSync(results).catch(() => {});
+  // Fire push notifications (per-sync + per-problem subscribers).
+  // Awaited so failures show up in the sync response / server logs
+  // instead of vanishing silently.
+  let notify: { sent: number; failed: number; subs: number; cleaned: number; errors: string[] };
+  try {
+    notify = await notifyAfterSync(results);
+  } catch (err) {
+    console.error(`[push] notifyAfterSync threw: ${err instanceof Error ? err.message : String(err)}`);
+    notify = { sent: 0, failed: 0, subs: 0, cleaned: 0, errors: [err instanceof Error ? err.message : String(err)] };
+  }
   // EOD acRate refresh, folded into sync so no second cron is needed
   const refreshed = await maybeEodRefresh().catch(() => null);
-  return { ok: true, synced: results, refreshed };
+  return { ok: true, synced: results, refreshed, notify };
 }
 
 export const dynamic = "force-dynamic";
