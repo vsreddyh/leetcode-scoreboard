@@ -3,23 +3,6 @@
 import { useEffect, useState } from "react";
 import { Bell, BellOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-
-type Mode = "per-sync" | "per-problem" | "twice-daily";
-
-const MODE_LABELS: Record<Mode, string> = {
-  "per-sync": "Per sync (every 5 min)",
-  "per-problem": "Per problem (every 5 min)",
-  "twice-daily": "Twice daily (11:30 AM/PM IST)",
-};
 
 function urlBase64ToUint8Array(base64String: string): BufferSource {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -31,36 +14,37 @@ function urlBase64ToUint8Array(base64String: string): BufferSource {
 }
 
 export function NotifyToggle() {
-  const [supported, setSupported] = useState(false);
+  const [supported] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      "serviceWorker" in navigator &&
+      "PushManager" in window
+  );
   const [subscribed, setSubscribed] = useState(false);
-  const [mode, setMode] = useState<Mode>("per-sync");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
-    setSupported(true);
+    if (!supported) return;
     navigator.serviceWorker.ready.then(async (reg) => {
       const sub = await reg.pushManager.getSubscription();
       if (sub) {
         setSubscribed(true);
-        // Fetch current mode from server
+        // Refresh stored keys on visit; server treats everything as per-sync.
         try {
-          const res = await fetch("/api/subscribe", {
+          await fetch("/api/subscribe", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ endpoint: sub.endpoint, keys: sub.toJSON().keys }),
           });
-          const data = await res.json();
-          if (data.mode) setMode(data.mode);
         } catch {
           /* empty */
         }
       }
     });
-  }, []);
+  }, [supported]);
 
-  async function subscribe(selectedMode: Mode) {
+  async function subscribe() {
     if (busy) return;
     setBusy(true);
     setStatus(null);
@@ -99,14 +83,13 @@ export function NotifyToggle() {
         body: JSON.stringify({
           endpoint: sub.endpoint,
           keys: subJson.keys,
-          mode: selectedMode,
+          mode: "per-sync",
         }),
       });
       if (!save.ok) {
         setStatus("Subscribed in browser but server save failed — try again.");
         return;
       }
-      setMode(selectedMode);
       setSubscribed(true);
     } catch (e) {
       setStatus(e instanceof Error ? `Subscribe failed: ${e.message}` : "Subscribe failed.");
@@ -138,114 +121,22 @@ export function NotifyToggle() {
     }
   }
 
-  async function sendTest() {
-    if (busy) return;
-    setBusy(true);
-    setStatus("Sending test…");
-    try {
-      const reg = await navigator.serviceWorker.ready;
-      const sub = await reg.pushManager.getSubscription();
-      if (!sub) {
-        setStatus("No browser subscription — enable notifications first.");
-        return;
-      }
-      const res = await fetch("/api/notify-test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ endpoint: sub.endpoint }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.sent > 0) {
-        setStatus("Test sent — it should arrive in a few seconds. If not, check server VAPID keys.");
-      } else if ((data.cleaned ?? 0) > 0) {
-        // Push service rejected it as dead; server already deleted it.
-        try {
-          await sub.unsubscribe();
-        } catch {
-          /* already gone */
-        }
-        setSubscribed(false);
-        setStatus("Your subscription was broken and has been removed — enable notifications again to resubscribe.");
-      } else {
-        setStatus(`Test failed: ${data.error ?? "unknown error"}. Check server VAPID keys.`);
-      }
-    } catch (e) {
-      setStatus(e instanceof Error ? `Test failed: ${e.message}` : "Test failed.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   if (!supported) return null;
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger render={<Button variant="outline" size="icon" />}>
-        {subscribed ? (
-          <Bell className="h-4 w-4" />
-        ) : (
-          <BellOff className="h-4 w-4 text-muted-foreground" />
-        )}
-        <span className="sr-only">Notifications</span>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-64">
-        {subscribed ? (
-          <>
-            <DropdownMenuGroup>
-              <DropdownMenuLabel>
-                Notifications: {MODE_LABELS[mode]}
-              </DropdownMenuLabel>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-                Switch mode:
-              </DropdownMenuLabel>
-              {(Object.entries(MODE_LABELS) as [Mode, string][]).map(([key, label]) => (
-                <DropdownMenuItem
-                  key={key}
-                  disabled={busy || key === mode}
-                  onClick={() => subscribe(key)}
-                >
-                  {key === mode ? "✓ " : ""}{label}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem onClick={sendTest} disabled={busy}>
-                Send test notification
-              </DropdownMenuItem>
-              <DropdownMenuItem variant="destructive" onClick={unsubscribe} disabled={busy}>
-                Disable notifications
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-            {status && (
-              <>
-                <DropdownMenuSeparator />
-                <p className="px-2 py-1.5 text-xs text-muted-foreground">{status}</p>
-              </>
-            )}
-          </>
-        ) : (
-          <>
-          <DropdownMenuGroup>
-            <DropdownMenuLabel>Enable notifications</DropdownMenuLabel>
-            {(Object.entries(MODE_LABELS) as [Mode, string][]).map(([key, label]) => (
-              <DropdownMenuItem key={key} disabled={busy} onClick={() => subscribe(key)}>
-                {label}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuGroup>
-          {status && (
-            <>
-              <DropdownMenuSeparator />
-              <p className="px-2 py-1.5 text-xs text-muted-foreground">{status}</p>
-            </>
-          )}
-          </>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <Button
+      variant="outline"
+      size="icon"
+      disabled={busy}
+      onClick={subscribed ? unsubscribe : subscribe}
+      title={status ?? (subscribed ? "Disable notifications" : "Enable notifications")}
+    >
+      {subscribed ? (
+        <Bell className="h-4 w-4" />
+      ) : (
+        <BellOff className="h-4 w-4 text-muted-foreground" />
+      )}
+      <span className="sr-only">Notifications</span>
+    </Button>
   );
 }

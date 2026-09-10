@@ -9,27 +9,17 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
-  const { endpoint, keys, mode } = body;
+  const { endpoint, keys } = body;
   if (!endpoint || !keys?.p256dh || !keys?.auth)
     return NextResponse.json({ ok: false, error: "invalid subscription" }, { status: 400 });
   await connectDB();
-  // When mode is omitted (client just reading current mode), don't overwrite it.
-  if (mode === "per-problem" || mode === "twice-daily" || mode === "per-sync") {
-    await PushSub.updateOne(
-      { endpoint },
-      { $set: { endpoint, keys, mode } },
-      { upsert: true }
-    );
-    return NextResponse.json({ ok: true, mode });
-  }
-  const existing = await PushSub.findOne({ endpoint }).lean();
-  const current = (existing as { mode?: string } | null)?.mode ?? "per-sync";
+  // Single notification type: everything is per-sync.
   await PushSub.updateOne(
     { endpoint },
-    { $set: { endpoint, keys }, $setOnInsert: { mode: "per-sync" } },
+    { $set: { endpoint, keys, mode: "per-sync" } },
     { upsert: true }
   );
-  return NextResponse.json({ ok: true, mode: current });
+  return NextResponse.json({ ok: true, mode: "per-sync" });
 }
 
 export async function DELETE(req: Request) {

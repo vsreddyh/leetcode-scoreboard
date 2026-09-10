@@ -80,7 +80,7 @@ async function doSync() {
     results[username] = saved;
     await sleep(1000);
   }
-  // Fire push notifications (per-sync + per-problem subscribers).
+  // Fire the single new-solve push notification (summary + leader).
   // Awaited so failures show up in the sync response / server logs
   // instead of vanishing silently.
   let notify: { sent: number; failed: number; subs: number; cleaned: number; errors: string[] };

@@ -34,12 +34,10 @@ export interface NotifyPayload {
   url?: string;
 }
 
-type Mode = "per-sync" | "per-problem" | "twice-daily";
-
 interface RawSub {
   endpoint: string;
   keys: { p256dh: string; auth: string };
-  mode?: Mode;
+  mode?: string;
 }
 
 async function sendToSub(
@@ -65,24 +63,12 @@ async function sendToSub(
   }
 }
 
-/** Current IST hour*60+minute. */
-function istMinutesNow(): number {
-  const now = new Date();
-  const ist = new Date(now.getTime() + (5 * 60 + 30) * 60 * 1000);
-  return ist.getUTCHours() * 60 + ist.getUTCMinutes();
-}
-
-/** True if within ±5 min of 11:30 (690 min) or 23:30 (1410 min). */
-function isDigestWindow(): boolean {
-  const m = istMinutesNow();
-  return Math.abs(m - 690) <= 5 || Math.abs(m - 1410) <= 5;
-}
-
 /**
- * Called after every sync. Sends:
- * - per-sync: one summary notification if any new solves
- * - per-problem: one notification per user with new solves
- * - twice-daily: digest only when within ±5 min of 11:30 AM/PM IST
+ * Called after every sync. Sends one summary notification to every subscriber
+ * when there are new solves, with the current leader appended.
+ *
+ * All subscriptions are treated as per-sync (legacy per-problem / twice-daily
+ * modes are normalized on read).
  *
  * Returns delivery counts so callers (sync route, logs) can observe failures
  * instead of silently swallowing them.
@@ -90,6 +76,8 @@ function isDigestWindow(): boolean {
 export async function notifyAfterSync(synced: Record<string, number>) {
   ensureConfig();
   await connectDB();
+  // One-time-style normalization: collapse legacy modes to per-sync.
+  await PushSub.updateMany({ mode: { $ne: "per-sync" } }, { $set: { mode: "per-sync" } }).catch(() => {});
   const subs = (await PushSub.find().lean()) as unknown as RawSub[];
   if (subs.length === 0) {
     console.warn("[push] notifyAfterSync: no subscriptions, skipping");
@@ -98,61 +86,34 @@ export async function notifyAfterSync(synced: Record<string, number>) {
 
   const jobs: Promise<{ ok: boolean; status?: number; error?: string; dead?: boolean }>[] = [];
 
-  // --- per-sync + per-problem: only when new solves ---
+  // --- new solves: single summary to everyone ---
   const hasNew = Object.values(synced).some((n) => n > 0);
   if (hasNew) {
     const summaryParts: string[] = [];
-    const detailParts: { user: string; count: number }[] = [];
     for (const [user, count] of Object.entries(synced)) {
       if (count > 0) {
         summaryParts.push(`${user}: ${count}`);
-        detailParts.push({ user, count });
       }
     }
 
-    const perSyncSubs = subs.filter((s) => (s.mode ?? "per-sync") === "per-sync");
-    const perProblemSubs = subs.filter((s) => s.mode === "per-problem");
-
-    if (perSyncSubs.length > 0) {
-      const payload: NotifyPayload = {
-        title: "LC Board — New solves!",
-        body: summaryParts.join(", "),
-        url: "/dashboard",
-      };
-      for (const sub of perSyncSubs) jobs.push(sendToSub(sub, payload));
-    }
-
-    if (perProblemSubs.length > 0) {
-      for (const { user, count } of detailParts) {
-        const payload: NotifyPayload = {
-          title: `LC Board — ${user}`,
-          body: `Solved ${count} new problem${count > 1 ? "s" : ""} today!`,
-          url: "/dashboard",
-        };
-        for (const sub of perProblemSubs) jobs.push(sendToSub(sub, payload));
-      }
-    }
-  } else {
-    console.warn(`[push] notifyAfterSync: no new solves in ${JSON.stringify(synced)}, skipping per-sync/per-problem`);
-  }
-
-  // --- twice-daily: send digest only during 11:30 AM/PM IST window ---
-  if (isDigestWindow()) {
-    const digestSubs = subs.filter((s) => s.mode === "twice-daily");
-    if (digestSubs.length > 0) {      const { getOverallScores } = await import("@/lib/scores");
+    let leaderSuffix = "";
+    try {
+      const { getOverallScores } = await import("@/lib/scores");
       const totals = await getOverallScores();
-      if (totals.length > 0) {
-        const lines = totals.map(
-          (t) => `${t.username}: ${t.total} pts (${t.count} problems)`
-        );
-        const payload: NotifyPayload = {
-          title: "LC Board — Daily digest",
-          body: lines.join(" | "),
-          url: "/dashboard",
-        };
-        for (const sub of digestSubs) jobs.push(sendToSub(sub, payload));
-      }
+      const leader = totals[0];
+      if (leader) leaderSuffix = ` • Leader: ${leader.username} (${leader.total} pts)`;
+    } catch {
+      /* leader is best-effort; notification still goes out without it */
     }
+
+    const payload: NotifyPayload = {
+      title: "LC Board — New solves!",
+      body: `${summaryParts.join(", ")}${leaderSuffix}`,
+      url: "/dashboard",
+    };
+    for (const sub of subs) jobs.push(sendToSub(sub, payload));
+  } else {
+    console.warn(`[push] notifyAfterSync: no new solves in ${JSON.stringify(synced)}, skipping`);
   }
 
   if (jobs.length === 0) return { sent: 0, failed: 0, subs: subs.length, cleaned: 0, errors: [] as string[] };

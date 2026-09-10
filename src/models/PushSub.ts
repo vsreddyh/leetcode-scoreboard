@@ -7,7 +7,7 @@ const PushSubSchema = new Schema(
       p256dh: { type: String, required: true },
       auth: { type: String, required: true },
     },
-    mode: { type: String, enum: ["per-sync", "per-problem", "twice-daily"], default: "per-sync" },
+    mode: { type: String, enum: ["per-sync"], default: "per-sync" },
   },
   { timestamps: true }
 );
