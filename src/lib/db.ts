@@ -16,12 +16,11 @@ export async function connectDB() {
   // Retain the promise only on success so a failed first attempt retries later.
   if (cached) {
     await cached.catch(() => undefined);
-    // readyState: 0 disconnected, 1 connected, 2 connecting, 3 disconnecting.
-    if (mongoose.connection.readyState === 1) return;
-    if (mongoose.connection.readyState === 2) {
+    if (mongoose.connection.readyState === mongoose.ConnectionStates.connected) return;
+    if (mongoose.connection.readyState === mongoose.ConnectionStates.connecting) {
       // Still connecting on the cached promise — wait for it.
       await cached.catch(() => undefined);
-      if (mongoose.connection.readyState === 1) return;
+      if (mongoose.connection.readyState === mongoose.ConnectionStates.connected) return;
     }
     cached = undefined;
   }
