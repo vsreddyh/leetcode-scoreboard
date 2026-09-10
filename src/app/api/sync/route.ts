@@ -78,13 +78,17 @@ async function doSync() {
             status: "Accepted",
             lang: s.lang,
             score,
-            submissions: 1,
           },
           $set: { difficulty, acRate },
+          // $inc alone handles both cases: missing field counts as 0,
+          // so upserts start at 1 and resubmits bump the counter.
+          // (Cannot also list `submissions` under $setOnInsert —
+          // Mongo rejects two operators on the same path.)
+          $inc: { submissions: 1 },
         };
         await Submission.updateOne(
           { username, titleSlug: s.titleSlug },
-          existing ? { ...baseUpdate, $inc: { submissions: 1 } } : baseUpdate,
+          baseUpdate,
           { upsert: true }
         );
         // Only count first-time solves so repeat syncs don't re-notify
