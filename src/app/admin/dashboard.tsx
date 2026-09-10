@@ -110,7 +110,14 @@ export default function AdminDashboard() {
           ? `, errors: ${Object.entries(data.errors).map(([u, e]) => `${u}: ${e}`).join("; ")}`
           : "";
         const warnStr = data.warnings?.length ? ` — ${data.warnings.join("; ")}` : "";
-        setMsg({ text: `Sync done: ${JSON.stringify(data.synced ?? {})}${errStr}${notifyStr}${warnStr}`, err: Object.keys(data.errors ?? {}).length > 0 });
+        const healStr = (data.healed ?? 0) > 0 ? `, scores unified: ${data.healed}` : "";
+        const detailStr = data.detail && Object.keys(data.detail).length > 0
+          ? ` — per user: ${Object.entries(data.detail).map(([u, d]) => {
+              const t = d as { fetched?: number; accepted?: number; skippedPreSeason?: number; saved?: number };
+              return `${u}: fetched ${t.fetched ?? 0}, accepted ${t.accepted ?? 0}, pre-season skipped ${t.skippedPreSeason ?? 0}, new ${t.saved ?? 0}`;
+            }).join("; ")}`
+          : "";
+        setMsg({ text: `Sync done: ${JSON.stringify(data.synced ?? {})}${errStr}${healStr}${notifyStr}${warnStr}${detailStr}`, err: Object.keys(data.errors ?? {}).length > 0 });
         loadSubs();
       } else {
         setMsg({

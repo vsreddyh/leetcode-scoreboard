@@ -38,6 +38,11 @@ async function doSync() {
   await Submission.deleteMany({ date: { $lt: cutoff } });
   const results: Record<string, number> = {};
   const errors: Record<string, string> = {};
+  const detail: Record<string, { fetched: number; accepted: number; skippedPreSeason: number; saved: number }> = {};
+  // Canonical score per question: one titleSlug = one acRate/score for everyone.
+  // acRate drifts over time, so without this two users solving the same problem
+  // minutes apart get different points (each snapshots a different acRate).
+  const freshRates = new Map<string, { acRate: number | null; difficulty: string | null }>();
   const usernames = await getTrackedUsernames();
   if (usernames.length === 0) {
     return { ok: true, synced: results, refreshed: null, notify: { sent: 0, failed: 0, subs: 0, cleaned: 0, errors: [] as string[] }, warnings: ["No tracked users — add LeetCode usernames in /admin first"] };
@@ -46,26 +51,44 @@ async function doSync() {
     try {
       const recents = await getRecentSubmissions(username, 20);
       let saved = 0;
+      let accepted = 0;
+      let skippedPreSeason = 0;
       for (const s of recents) {
         if (s.statusDisplay !== "Accepted") continue;
+        accepted++;
         const ts = Number(s.timestamp);
         if (!Number.isFinite(ts)) continue;
         const date = dayKey(ts);
-        if (date < cutoff) continue; // skip pre-season
+        if (date < cutoff) {
+          skippedPreSeason++; // skip pre-season
+          continue;
+        }
         const existing = await Submission.findOne({ username, titleSlug: s.titleSlug }).lean();
         const typed = existing as { acRate?: number | null; difficulty?: string | null } | null;
-        let acRate = typed?.acRate ?? null;
-        let difficulty = typed?.difficulty ?? null;
-        if (acRate == null) {
-          try {
-            const qd = await getQuestionDetails(s.titleSlug);
-            acRate = qd.acRate;
-            difficulty = qd.difficulty;
-          } catch (err) {
-            console.error(`[sync] question details failed for ${s.titleSlug}: ${err instanceof Error ? err.message : String(err)}`);
-            // Keep going with score 0 rather than aborting the whole sync.
+        // Reuse a rate fetched earlier in THIS run first (same question solved
+        // by two users minutes apart must pay the same points), then the
+        // stored value, then a fresh fetch as last resort.
+        let acRate: number | null;
+        let difficulty: string | null;
+        const canonical = freshRates.get(s.titleSlug);
+        if (canonical) {
+          acRate = canonical.acRate;
+          difficulty = canonical.difficulty;
+        } else {
+          acRate = typed?.acRate ?? null;
+          difficulty = typed?.difficulty ?? null;
+          if (acRate == null) {
+            try {
+              const qd = await getQuestionDetails(s.titleSlug);
+              acRate = qd.acRate;
+              difficulty = qd.difficulty;
+              freshRates.set(s.titleSlug, { acRate, difficulty });
+            } catch (err) {
+              console.error(`[sync] question details failed for ${s.titleSlug}: ${err instanceof Error ? err.message : String(err)}`);
+              // Keep going with score 0 rather than aborting the whole sync.
+            }
+            await sleep(300);
           }
-          await sleep(300);
         }
         const score = scoreFor(acRate);
         const baseUpdate = {
@@ -95,6 +118,7 @@ async function doSync() {
         if (!existing) saved++;
       }
       results[username] = saved;
+      detail[username] = { fetched: recents.length, accepted, skippedPreSeason, saved };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error(`[sync] user ${username} failed: ${message}`);
@@ -102,6 +126,46 @@ async function doSync() {
       results[username] = 0;
     }
     await sleep(1000);
+  }
+  // Canonicalize: a rate fetched for one solver applies to ALL solvers of the
+  // same question (heals the earlier-processed user too). Then heal any
+  // pre-existing divergence (e.g. 88.2 vs 88.4) with one fresh fetch per slug.
+  let healed = 0;
+  for (const [slug, rate] of freshRates) {
+    if (rate.acRate == null) continue;
+    try {
+      const r = await Submission.updateMany(
+        { titleSlug: slug, date: { $gte: cutoff } },
+        { $set: { acRate: rate.acRate, difficulty: rate.difficulty, score: scoreFor(rate.acRate) } }
+      );
+      healed += r.modifiedCount ?? 0;
+    } catch (err) {
+      console.error(`[sync] canonicalize ${slug} failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  try {
+    const divergent = (await Submission.aggregate([
+      { $match: { date: { $gte: cutoff } } },
+      { $group: { _id: "$titleSlug", scores: { $addToSet: "$score" } } },
+      { $match: { "scores.1": { $exists: true } } },
+    ])) as { _id: string }[];
+    for (const d of divergent) {
+      if (freshRates.has(d._id)) continue; // already canonicalized above
+      try {
+        const qd = await getQuestionDetails(d._id);
+        if (qd.acRate == null) continue;
+        const r = await Submission.updateMany(
+          { titleSlug: d._id, date: { $gte: cutoff } },
+          { $set: { acRate: qd.acRate, difficulty: qd.difficulty, score: scoreFor(qd.acRate) } }
+        );
+        healed += r.modifiedCount ?? 0;
+      } catch (err) {
+        console.error(`[sync] heal ${d._id} failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      await sleep(300);
+    }
+  } catch (err) {
+    console.error(`[sync] divergence check failed: ${err instanceof Error ? err.message : String(err)}`);
   }
   // Fire the single new-solve push notification (summary + leader).
   // Awaited so failures show up in the sync response / server logs
@@ -118,7 +182,7 @@ async function doSync() {
     console.error(`[sync] EOD refresh failed: ${err instanceof Error ? err.message : String(err)}`);
     return null;
   });
-  return { ok: true, synced: results, errors, refreshed, notify };
+  return { ok: true, synced: results, detail, errors, healed, refreshed, notify };
 }
 
 export const dynamic = "force-dynamic";

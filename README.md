@@ -62,6 +62,7 @@ curl "http://localhost:3000/api/sync?secret=$CRON_SECRET"
 
 - Only `Accepted` submissions score; WA/CE/etc. are ignored (not stored).
 - Score stored **per question** (one doc per user+titleSlug, dated at first Accept); resubmits only bump a counter, never add points. Scores API also dedupes legacy per-submission docs.
+- Score is **canonical per question**: one `titleSlug` = one `acRate`/score for everyone. A rate fetched for one solver is backfilled to all solvers of the same question, and each sync heals any divergent scores (e.g. 88.2 vs 88.4) with a single fresh fetch — so solving the same problem minutes apart always pays the same points.
 - Dates are IST (`Asia/Kolkata`) `YYYY-MM-DD` buckets.
 - EOD refresh: auto-runs inside the first sync at/after 23:30 IST (once per day), re-fetching `acRate` for **that day's (IST) questions** and recomputing scores.
 - `recentSubmissionList` caps at 20/user/sync; history accumulates in Mongo over time.

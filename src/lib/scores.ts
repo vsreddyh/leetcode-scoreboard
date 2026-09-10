@@ -78,29 +78,30 @@ export async function getOverallScores(): Promise<TotalRow[]> {
 }
 
 /**
- * Re-fetch acRate/difficulty for every doc dated `date` and recompute scores.
- * Shared by the manual /api/refresh endpoint and the in-sync EOD auto-refresh.
+ * Re-fetch acRate/difficulty once per question and recompute scores for ALL
+ * solvers of that question (canonical score per titleSlug). Shared by the
+ * manual /api/refresh endpoint and the in-sync EOD auto-refresh.
  */
 export async function refreshDayScores(
   date: string
 ): Promise<{ updated: number; total: number }> {
   await connectDB();
-  const docs = await Submission.find({ date }).lean();
+  const slugs = (await Submission.distinct("titleSlug", { date })) as string[];
   let updated = 0;
-  for (const d of docs) {
-    const doc = d as { username: string; titleSlug: string };
+  for (const slug of slugs) {
     try {
-      const { acRate, difficulty } = await getQuestionDetails(doc.titleSlug);
+      const { acRate, difficulty } = await getQuestionDetails(slug);
       if (acRate == null) continue;
-      await Submission.updateOne(
-        { username: doc.username, titleSlug: doc.titleSlug },
+      const r = await Submission.updateMany(
+        { titleSlug: slug },
         { $set: { acRate, difficulty, score: scoreFor(acRate) } }
       );
-      updated++;
+      updated += r.modifiedCount ?? 0;
     } catch {
       // rate-limited or gone — leave stale value, retry tomorrow
     }
     await sleep(300);
   }
-  return { updated, total: docs.length };
+  const total = await Submission.countDocuments({ date });
+  return { updated, total };
 }
