@@ -38,19 +38,25 @@ export default function AdminDashboard() {
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmClearPush, setConfirmClearPush] = useState(false);
 
-  async function loadUsers() {
-    const res = await fetch("/api/admin/users");
-    if (res.ok) setUsers((await res.json()).users ?? []);
-  }
-
   async function loadSubs() {
     const res = await fetch("/api/admin/subs");
     if (res.ok) setSubs((await res.json()).subs ?? []);
   }
 
   useEffect(() => {
-    loadUsers();
-    loadSubs();
+    let cancelled = false;
+    void (async () => {
+      const [usersRes, subsRes] = await Promise.all([
+        fetch("/api/admin/users"),
+        fetch("/api/admin/subs"),
+      ]);
+      if (cancelled) return;
+      if (usersRes.ok) setUsers((await usersRes.json()).users ?? []);
+      if (subsRes.ok) setSubs((await subsRes.json()).subs ?? []);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function add(e: React.FormEvent) {

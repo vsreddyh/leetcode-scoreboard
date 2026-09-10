@@ -13,14 +13,16 @@ async function connectOnce() {
 let cached: Promise<typeof mongoose> | undefined;
 
 export async function connectDB() {
+  // Function call (not a property read) so TS doesn't narrow the enum type.
+  const state = (): mongoose.ConnectionStates => mongoose.connection.readyState;
   // Retain the promise only on success so a failed first attempt retries later.
   if (cached) {
     await cached.catch(() => undefined);
-    if (mongoose.connection.readyState === mongoose.ConnectionStates.connected) return;
-    if (mongoose.connection.readyState === mongoose.ConnectionStates.connecting) {
+    if (state() === mongoose.ConnectionStates.connected) return;
+    if (state() === mongoose.ConnectionStates.connecting) {
       // Still connecting on the cached promise — wait for it.
       await cached.catch(() => undefined);
-      if (mongoose.connection.readyState === mongoose.ConnectionStates.connected) return;
+      if (state() === mongoose.ConnectionStates.connected) return;
     }
     cached = undefined;
   }

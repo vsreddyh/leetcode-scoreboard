@@ -26,6 +26,7 @@ export default function AdminLogin() {
       if (res.ok) {
         // Full reload so the freshly-set httpOnly cookie is definitely
         // attached on the /admin request (router.push can race it).
+        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
         window.location.href = "/admin";
       } else setError(data.error ?? "Invalid password");
     } catch {

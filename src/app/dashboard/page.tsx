@@ -42,14 +42,6 @@ const diffColor: Record<string, string> = {
 };
 
 export default function Dashboard() {
-  const [selected, setSelected] = useState<Date | undefined>(undefined);
-  const [dateStr, setDateStr] = useState("");
-  const [questions, setQuestions] = useState<Question[]>([]);
-  const [totals, setTotals] = useState<Total[]>([]);
-  const [activeDates, setActiveDates] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [dayLoading, setDayLoading] = useState(false);
-
   // IST today string
   const istToday = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Kolkata",
@@ -57,6 +49,14 @@ export default function Dashboard() {
     month: "2-digit",
     day: "2-digit",
   }).format(new Date());
+
+  const [selected, setSelected] = useState<Date | undefined>(() => parseISO(istToday));
+  const [dateStr, setDateStr] = useState(() => istToday);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [totals, setTotals] = useState<Total[]>([]);
+  const [activeDates, setActiveDates] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [dayLoading, setDayLoading] = useState(false);
 
   // Fetch overall + active dates on mount
   useEffect(() => {
@@ -88,13 +88,25 @@ export default function Dashboard() {
     }
   }, []);
 
-  // Set default to today (IST) on mount
+  // Fetch day detail on mount and whenever the selected date changes
   useEffect(() => {
-    const d = parseISO(istToday);
-    setSelected(d);
-    setDateStr(istToday);
-    fetchDay(istToday);
-  }, [istToday, fetchDay]);
+    let cancelled = false;
+    void (async () => {
+      setDayLoading(true);
+      try {
+        const res = await fetch(`/api/day/${dateStr}`);
+        const data = await res.json();
+        if (!cancelled) setQuestions(data.questions ?? []);
+      } catch {
+        if (!cancelled) setQuestions([]);
+      } finally {
+        if (!cancelled) setDayLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [dateStr]);
 
   function onDayClick(day: Date) {
     setSelected(day);
