@@ -100,11 +100,15 @@ export default function AdminDashboard() {
         const notifyStr = n
           ? `, notify: ${n.sent ?? 0} sent / ${n.failed ?? 0} failed (${n.subs ?? 0} subs${(n.cleaned ?? 0) > 0 ? `, ${n.cleaned} dead removed` : ""})${(n.errors?.length ?? 0) > 0 ? ` — ${n.errors!.join("; ")}` : ""}`
           : "";
-        setMsg({ text: `Sync done: ${JSON.stringify(data.synced ?? {})}${notifyStr}`, err: false });
+        const errStr = data.errors && Object.keys(data.errors).length > 0
+          ? `, errors: ${Object.entries(data.errors).map(([u, e]) => `${u}: ${e}`).join("; ")}`
+          : "";
+        const warnStr = data.warnings?.length ? ` — ${data.warnings.join("; ")}` : "";
+        setMsg({ text: `Sync done: ${JSON.stringify(data.synced ?? {})}${errStr}${notifyStr}${warnStr}`, err: Object.keys(data.errors ?? {}).length > 0 });
         loadSubs();
       } else {
         setMsg({
-          text: data.error === "Unauthorized" ? "Unauthorized — login again" : "Sync failed",
+          text: data.error === "Unauthorized" ? "Unauthorized — login again" : `Sync failed: ${data.error ?? `HTTP ${res.status}`}`,
           err: true,
         });
       }
@@ -125,6 +129,29 @@ export default function AdminDashboard() {
       } else {
         setMsg({ text: `Test failed: ${data.error ?? "unknown error"} — check VAPID env vars on the server.`, err: true });
       }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function diagnose() {
+    if (busy) return;
+    setBusy(true);
+    setMsg({ text: "Checking server config, database, and LeetCode…", err: false });
+    try {
+      const res = await fetch("/api/admin/status");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMsg({ text: `Diagnose failed: ${data.error ?? `HTTP ${res.status}`}`, err: true });
+        return;
+      }
+      const envBad = Object.entries(data.env ?? {})
+        .filter(([, v]) => !v)
+        .map(([k]) => k);
+      setMsg({
+        text: `Diagnose — env missing: ${envBad.length ? envBad.join(", ") : "none"}; db: ${data.db?.ok ? "ok" : `FAIL (${data.db?.error ?? "unknown"})`}; users: ${JSON.stringify(data.users ?? [])}${data.usersError ? ` (err: ${data.usersError})` : ""}; leetcode probe: ${data.leetcode ? (data.leetcode.ok ? `ok (${data.leetcode.count} recents)` : `FAIL (${data.leetcode.error})`) : "skipped (no users)"}`,
+        err: !data.db?.ok || (data.leetcode != null && !data.leetcode.ok),
+      });
     } finally {
       setBusy(false);
     }
@@ -225,6 +252,9 @@ export default function AdminDashboard() {
           <div className="mt-4 flex flex-wrap gap-2">
             <Button onClick={sync} disabled={busy}>
               {busy ? "Syncing…" : "Run sync now"}
+            </Button>
+            <Button variant="outline" onClick={diagnose} disabled={busy}>
+              Diagnose
             </Button>
             <Button variant="outline" onClick={testNotify} disabled={busy}>
               Send test notification

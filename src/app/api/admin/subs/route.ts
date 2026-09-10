@@ -8,10 +8,18 @@ export async function GET() {
   const c = (await cookies()).get(ADMIN_COOKIE)?.value;
   if (!(await verifySession(c)))
     return NextResponse.json({ ok: false }, { status: 401 });
-  await connectDB();
-  const subs = await Submission.find()
-    .sort({ timestamp: -1 })
-    .limit(50)
-    .lean();
-  return NextResponse.json({ subs });
+  try {
+    await connectDB();
+    const subs = await Submission.find()
+      .sort({ timestamp: -1 })
+      .limit(50)
+      .lean();
+    return NextResponse.json({ subs });
+  } catch (err) {
+    console.error(`[subs] failed: ${err instanceof Error ? err.message : String(err)}`);
+    return NextResponse.json(
+      { ok: false, error: err instanceof Error ? err.message : String(err) },
+      { status: 500 }
+    );
+  }
 }

@@ -37,28 +37,38 @@ async function doSync() {
   // Drop any data before season start
   await Submission.deleteMany({ date: { $lt: cutoff } });
   const results: Record<string, number> = {};
-  for (const username of await getTrackedUsernames()) {
-    const recents = await getRecentSubmissions(username, 20);
-    let saved = 0;
-    for (const s of recents) {
-      if (s.statusDisplay !== "Accepted") continue;
-      const ts = Number(s.timestamp);
-      const date = dayKey(ts);
-      if (date < cutoff) continue; // skip pre-season
-      const existing = await Submission.findOne({ username, titleSlug: s.titleSlug }).lean();
-      const typed = existing as { acRate?: number | null; difficulty?: string | null } | null;
-      let acRate = typed?.acRate ?? null;
-      let difficulty = typed?.difficulty ?? null;
-      if (acRate == null) {
-        const qd = await getQuestionDetails(s.titleSlug);
-        acRate = qd.acRate;
-        difficulty = qd.difficulty;
-        await sleep(300);
-      }
-      const score = scoreFor(acRate);
-      await Submission.updateOne(
-        { username, titleSlug: s.titleSlug },
-        {
+  const errors: Record<string, string> = {};
+  const usernames = await getTrackedUsernames();
+  if (usernames.length === 0) {
+    return { ok: true, synced: results, refreshed: null, notify: { sent: 0, failed: 0, subs: 0, cleaned: 0, errors: [] as string[] }, warnings: ["No tracked users — add LeetCode usernames in /admin first"] };
+  }
+  for (const username of usernames) {
+    try {
+      const recents = await getRecentSubmissions(username, 20);
+      let saved = 0;
+      for (const s of recents) {
+        if (s.statusDisplay !== "Accepted") continue;
+        const ts = Number(s.timestamp);
+        if (!Number.isFinite(ts)) continue;
+        const date = dayKey(ts);
+        if (date < cutoff) continue; // skip pre-season
+        const existing = await Submission.findOne({ username, titleSlug: s.titleSlug }).lean();
+        const typed = existing as { acRate?: number | null; difficulty?: string | null } | null;
+        let acRate = typed?.acRate ?? null;
+        let difficulty = typed?.difficulty ?? null;
+        if (acRate == null) {
+          try {
+            const qd = await getQuestionDetails(s.titleSlug);
+            acRate = qd.acRate;
+            difficulty = qd.difficulty;
+          } catch (err) {
+            console.error(`[sync] question details failed for ${s.titleSlug}: ${err instanceof Error ? err.message : String(err)}`);
+            // Keep going with score 0 rather than aborting the whole sync.
+          }
+          await sleep(300);
+        }
+        const score = scoreFor(acRate);
+        const baseUpdate = {
           $setOnInsert: {
             username,
             title: s.title,
@@ -68,16 +78,25 @@ async function doSync() {
             status: "Accepted",
             lang: s.lang,
             score,
+            submissions: 1,
           },
           $set: { difficulty, acRate },
-          $inc: { submissions: existing ? 1 : 0 },
-        },
-        { upsert: true }
-      );
-      // Only count first-time solves so repeat syncs don't re-notify
-      if (!existing) saved++;
+        };
+        await Submission.updateOne(
+          { username, titleSlug: s.titleSlug },
+          existing ? { ...baseUpdate, $inc: { submissions: 1 } } : baseUpdate,
+          { upsert: true }
+        );
+        // Only count first-time solves so repeat syncs don't re-notify
+        if (!existing) saved++;
+      }
+      results[username] = saved;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[sync] user ${username} failed: ${message}`);
+      errors[username] = message;
+      results[username] = 0;
     }
-    results[username] = saved;
     await sleep(1000);
   }
   // Fire the single new-solve push notification (summary + leader).
@@ -91,8 +110,11 @@ async function doSync() {
     notify = { sent: 0, failed: 0, subs: 0, cleaned: 0, errors: [err instanceof Error ? err.message : String(err)] };
   }
   // EOD acRate refresh, folded into sync so no second cron is needed
-  const refreshed = await maybeEodRefresh().catch(() => null);
-  return { ok: true, synced: results, refreshed, notify };
+  const refreshed = await maybeEodRefresh().catch((err) => {
+    console.error(`[sync] EOD refresh failed: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  });
+  return { ok: true, synced: results, errors, refreshed, notify };
 }
 
 export const dynamic = "force-dynamic";
@@ -117,7 +139,13 @@ export async function POST(req: Request) {
   const cookieStore = await cookies();
   if (!(await isAuthorized(req, cookieStore.get(ADMIN_COOKIE)?.value, new URL(req.url))))
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-  return NextResponse.json(await doSync());
+  try {
+    return NextResponse.json(await doSync());
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[sync] fatal: ${message}`);
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
 }
 
 export async function GET(req: Request) {
@@ -125,5 +153,11 @@ export async function GET(req: Request) {
   const cookieStore = await cookies();
   if (!(await isAuthorized(req, cookieStore.get(ADMIN_COOKIE)?.value, url)))
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-  return NextResponse.json(await doSync());
+  try {
+    return NextResponse.json(await doSync());
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[sync] fatal: ${message}`);
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
 }

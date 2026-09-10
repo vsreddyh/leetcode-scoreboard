@@ -9,7 +9,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ date: s
     return NextResponse.json({ error: "invalid date" }, { status: 400 });
   try {
     return NextResponse.json({ questions: await getDayDetail(date) });
-  } catch {
-    return NextResponse.json({ questions: [] });
+  } catch (err) {
+    console.error(`[day/${date}] failed: ${err instanceof Error ? err.message : String(err)}`);
+    return NextResponse.json(
+      { questions: [], error: err instanceof Error ? err.message : String(err) },
+      { status: 500 }
+    );
   }
 }

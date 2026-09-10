@@ -1,6 +1,5 @@
 "use client";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,7 +10,6 @@ export default function AdminLogin() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const router = useRouter();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -24,10 +22,14 @@ export default function AdminLogin() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password }),
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        router.push("/admin");
-        router.refresh();
-      } else setError("Invalid password");
+        // Full reload so the freshly-set httpOnly cookie is definitely
+        // attached on the /admin request (router.push can race it).
+        window.location.href = "/admin";
+      } else setError(data.error ?? "Invalid password");
+    } catch {
+      setError("Network error — is the server running?");
     } finally {
       setBusy(false);
     }

@@ -14,20 +14,39 @@ export interface QuestionDetails {
 }
 
 async function gql(query: string, variables: Record<string, unknown>) {
-  const res = await fetch(GRAPHQL_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Referer: "https://leetcode.com",
-      "User-Agent": "Mozilla/5.0",
-    },
-    body: JSON.stringify({ query, variables }),
-    next: { revalidate: 0 },
-    cache: "no-store",
-  });
+  let res: Response;
+  try {
+    res = await fetch(GRAPHQL_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Origin: "https://leetcode.com",
+        Referer: "https://leetcode.com",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+      },
+      body: JSON.stringify({ query, variables }),
+      next: { revalidate: 0 },
+      cache: "no-store",
+    });
+  } catch (err) {
+    throw new Error(
+      `LeetCode network error: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
   if (res.status === 429) throw new Error("LeetCode rate limited (429)");
-  if (!res.ok) throw new Error(`LeetCode HTTP ${res.status}`);
-  return res.json();
+  if (res.status === 403)
+    throw new Error("LeetCode forbidden (403) — request blocked, retry next tick");
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`LeetCode HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ""}`);
+  }
+  const json = await res.json().catch(() => null);
+  const errors = (json as { errors?: { message?: string }[] } | null)?.errors;
+  if (errors?.length)
+    throw new Error(`LeetCode GraphQL: ${errors.map((e) => e.message ?? "unknown").join("; ").slice(0, 300)}`);
+  return json;
 }
 
 export async function getRecentSubmissions(

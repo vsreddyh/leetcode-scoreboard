@@ -1,4 +1,4 @@
-// Web Crypto only — must stay Edge-compatible (imported by middleware).
+// Web Crypto only — must stay Edge-compatible (imported by proxy).
 const COOKIE = "lc_admin";
 
 function secret() {
@@ -21,10 +21,14 @@ function ctEqual(a: string, b: string): boolean {
 }
 
 async function hmac(payload: string): Promise<string> {
+  return hmacWith(secret(), payload);
+}
+
+async function hmacWith(sec: string, payload: string): Promise<string> {
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey(
     "raw",
-    enc.encode(secret()),
+    enc.encode(sec),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"]
@@ -39,11 +43,22 @@ export async function signSession(username: string): Promise<string> {
 
 export async function verifySession(cookieVal: string | undefined): Promise<string | null> {
   if (!cookieVal) return null;
+  let sec: string;
+  try {
+    sec = secret();
+  } catch {
+    return null;
+  }
   const parts = cookieVal.split(".");
   if (parts.length !== 3) return null;
   const [username, exp, sig] = parts;
-  if (!/^\d+$/.test(exp) || Number(exp) < Date.now()) return null;
-  const expected = await hmac(`${username}.${exp}`);
+  if (!username || !/^\d+$/.test(exp) || Number(exp) < Date.now()) return null;
+  let expected: string;
+  try {
+    expected = await hmacWith(sec, `${username}.${exp}`);
+  } catch {
+    return null;
+  }
   if (!ctEqual(sig, expected)) return null;
   return username;
 }
