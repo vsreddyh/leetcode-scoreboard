@@ -65,7 +65,8 @@ async function sendToSub(
 
 /**
  * Called after every sync. Sends one summary notification to every subscriber
- * when there are new solves, with the current leader appended.
+ * when there are new solves: who solved how many in this sync tick plus each
+ * solver's current TODAY (IST) points, with today's leader appended.
  *
  * All subscriptions are treated as per-sync (legacy per-problem / twice-daily
  * modes are normalized on read).
@@ -89,26 +90,33 @@ export async function notifyAfterSync(synced: Record<string, number>) {
   // --- new solves: single summary to everyone ---
   const hasNew = Object.values(synced).some((n) => n > 0);
   if (hasNew) {
+    // Today's leaderboard (IST) — solvers' current today-points, not all-time.
+    let todayPts = new Map<string, number>();
+    let todayLeader = "";
+    try {
+      const { getDayScores } = await import("@/lib/scores");
+      const { todayIST } = await import("@/lib/leetcode");
+      const totals = await getDayScores(todayIST());
+      todayPts = new Map(totals.map((t) => [t.username, t.total]));
+      const leader = totals[0];
+      if (leader) todayLeader = ` • Today's leader: ${leader.username} (${leader.total} pts)`;
+    } catch {
+      /* today points are best-effort; notification still goes out without them */
+    }
+
     const summaryParts: string[] = [];
     for (const [user, count] of Object.entries(synced)) {
       if (count > 0) {
-        summaryParts.push(`${user}: ${count}`);
+        const pts = todayPts.get(user);
+        summaryParts.push(
+          pts != null ? `${user} +${count} (today ${pts} pts)` : `${user} +${count}`
+        );
       }
-    }
-
-    let leaderSuffix = "";
-    try {
-      const { getOverallScores } = await import("@/lib/scores");
-      const totals = await getOverallScores();
-      const leader = totals[0];
-      if (leader) leaderSuffix = ` • Leader: ${leader.username} (${leader.total} pts)`;
-    } catch {
-      /* leader is best-effort; notification still goes out without it */
     }
 
     const payload: NotifyPayload = {
       title: "LC Board — New solves!",
-      body: `${summaryParts.join(", ")}${leaderSuffix}`,
+      body: `${summaryParts.join(", ")}${todayLeader}`,
       url: "/dashboard",
     };
     for (const sub of subs) jobs.push(sendToSub(sub, payload));

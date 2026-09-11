@@ -77,6 +77,27 @@ export async function getOverallScores(): Promise<TotalRow[]> {
   }));
 }
 
+/** Today's (or any date's) leaderboard: sum of scores for docs in that date bucket. */
+export async function getDayScores(date: string): Promise<TotalRow[]> {
+  await connectDB();
+  const totals = await Submission.aggregate([
+    { $match: { status: "Accepted", date } },
+    {
+      $group: {
+        _id: "$username",
+        total: { $sum: "$score" },
+        count: { $sum: 1 },
+      },
+    },
+    { $sort: { total: -1 } },
+  ]);
+  return totals.map((t) => ({
+    username: t._id as string,
+    total: Math.round(t.total * 100) / 100,
+    count: t.count as number,
+  }));
+}
+
 /**
  * Re-fetch acRate/difficulty once per question and recompute scores for ALL
  * solvers of that question (canonical score per titleSlug). Shared by the
