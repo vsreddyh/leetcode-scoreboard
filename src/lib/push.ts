@@ -117,7 +117,7 @@ export async function notifyAfterSync(synced: Record<string, number>) {
     const payload: NotifyPayload = {
       title: "LC Board — New solves!",
       body: `${summaryParts.join(", ")}${todayLeader}`,
-      url: "/dashboard",
+      url: "/",
     };
     for (const sub of subs) jobs.push(sendToSub(sub, payload));
   } else {
@@ -152,7 +152,7 @@ export async function sendTestPush(endpoint?: string) {
   const payload: NotifyPayload = {
     title: "LC Board — Test notification",
     body: "If you see this, push works. New-solve alerts will arrive automatically.",
-    url: "/dashboard",
+    url: "/",
   };
   const results = await Promise.allSettled(subs.map((s) => sendToSub(s, payload)));
   let sent = 0;

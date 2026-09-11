@@ -214,11 +214,11 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div className="flex-1 px-4 py-6 sm:px-8 max-w-5xl mx-auto w-full">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="text-2xl font-bold">Admin</h1>
+    <div className="flex-1 w-full max-w-5xl mx-auto px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Admin</h1>
         <div className="flex gap-2 items-center">
-          <Button variant="outline" size="sm" onClick={() => router.push("/dashboard")}>
+          <Button variant="outline" size="sm" onClick={() => router.push("/")}>
             Dashboard
           </Button>
           <ThemeToggle />
@@ -227,23 +227,23 @@ export default function AdminDashboard() {
           </form>
         </div>
       </div>
-      <p className="text-sm text-muted-foreground mt-1">
+      <p className="text-xs sm:text-sm text-muted-foreground mt-1">
         Manage tracked users. Sync runs every 5 min via cron.
       </p>
 
-      <Separator className="my-6" />
+      <Separator className="my-4 sm:my-6" />
 
       {/* Tracked users */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Tracked users</CardTitle>
+      <Card className="min-w-0">
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="text-sm sm:text-base">Tracked users</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
           <div className="space-y-2">
             {users.map((u) => (
-              <div key={u} className="flex items-center justify-between border rounded-md px-3 py-2">
-                <span className="text-sm font-medium break-all">{u}</span>
-                <Button variant="ghost" size="sm" onClick={() => remove(u)} disabled={busy}>
+              <div key={u} className="flex items-center justify-between gap-2 border rounded-md px-3 py-2 min-w-0">
+                <span className="text-sm font-medium break-all min-w-0 flex-1">{u}</span>
+                <Button variant="ghost" size="sm" onClick={() => remove(u)} disabled={busy} className="shrink-0">
                   Remove
                 </Button>
               </div>
@@ -262,20 +262,21 @@ export default function AdminDashboard() {
               {busy ? "…" : "Add"}
             </Button>
           </form>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button onClick={sync} disabled={busy}>
+          <div className="mt-4 grid grid-cols-1 sm:flex sm:flex-wrap gap-2">
+            <Button onClick={sync} disabled={busy} className="w-full sm:w-auto">
               {busy ? "Syncing…" : "Run sync now"}
             </Button>
-            <Button variant="outline" onClick={diagnose} disabled={busy}>
+            <Button variant="outline" onClick={diagnose} disabled={busy} className="w-full sm:w-auto">
               Diagnose
             </Button>
-            <Button variant="outline" onClick={testNotify} disabled={busy}>
+            <Button variant="outline" onClick={testNotify} disabled={busy} className="w-full sm:w-auto">
               Send test notification
             </Button>
             <Button
               variant={confirmClearPush ? "destructive" : "outline"}
               onClick={clearPushSubs}
               disabled={busy}
+              className="w-full sm:w-auto"
             >
               {confirmClearPush ? "Confirm clear push subs?" : "Clear push subscriptions"}
             </Button>
@@ -283,6 +284,7 @@ export default function AdminDashboard() {
               variant={confirmClear ? "destructive" : "outline"}
               onClick={clearAll}
               disabled={busy}
+              className="w-full sm:w-auto"
             >
               {confirmClear ? "Confirm clear all?" : "Clear all data"}
             </Button>
@@ -291,20 +293,20 @@ export default function AdminDashboard() {
       </Card>
 
       {msg && (
-        <p className={`text-sm mt-3 ${msg.err ? "text-destructive" : "text-muted-foreground"}`}>
+        <p className={`text-xs sm:text-sm mt-3 break-words ${msg.err ? "text-destructive" : "text-muted-foreground"}`}>
           {msg.text}
         </p>
       )}
 
-      <Separator className="my-6" />
+      <Separator className="my-4 sm:my-6" />
 
       {/* Recent submissions */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Recent submissions in DB</CardTitle>
+      <Card className="min-w-0">
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="text-sm sm:text-base">Recent submissions in DB</CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
+        <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+          <div className="hidden md:block overflow-x-auto -mx-1 px-1">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -318,9 +320,9 @@ export default function AdminDashboard() {
               <TableBody>
                 {subs.map((s) => (
                   <TableRow key={s._id}>
-                    <TableCell>{s.date}</TableCell>
-                    <TableCell>{s.username}</TableCell>
-                    <TableCell>
+                    <TableCell className="whitespace-nowrap">{s.date}</TableCell>
+                    <TableCell className="whitespace-nowrap">{s.username}</TableCell>
+                    <TableCell className="whitespace-normal break-words min-w-[160px]">
                       <a
                         href={`https://leetcode.com/problems/${s.titleSlug}/`}
                         target="_blank"
@@ -337,7 +339,7 @@ export default function AdminDashboard() {
                         </Badge>
                       ) : "—"}
                     </TableCell>
-                    <TableCell className="text-right font-semibold">{s.score}</TableCell>
+                    <TableCell className="text-right font-semibold tabular-nums">{s.score}</TableCell>
                   </TableRow>
                 ))}
                 {subs.length === 0 && (
@@ -349,6 +351,44 @@ export default function AdminDashboard() {
                 )}
               </TableBody>
             </Table>
+          </div>
+          <div className="md:hidden">
+            {subs.length === 0 ? (
+              <p className="text-sm text-center text-muted-foreground">No data yet.</p>
+            ) : (
+              <ul className="space-y-2">
+                {subs.map((s) => (
+                  <li key={s._id} className="rounded-lg border bg-card p-3 space-y-1.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-sm font-semibold truncate min-w-0">{s.username}</span>
+                      <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0 tabular-nums">
+                        {s.date}
+                      </span>
+                    </div>
+                    <a
+                      href={`https://leetcode.com/problems/${s.titleSlug}/`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block text-sm text-primary underline underline-offset-2 break-words"
+                    >
+                      {s.title}
+                    </a>
+                    <div className="flex items-center gap-2">
+                      {s.difficulty ? (
+                        <Badge variant="secondary" className={diffColor[s.difficulty] ?? ""}>
+                          {s.difficulty}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">—</span>
+                      )}
+                      <span className="text-xs font-semibold tabular-nums ml-auto">
+                        {s.score} pts
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </CardContent>
       </Card>

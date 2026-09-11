@@ -6,7 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: "LC Board",
     description:
       "Daily scores for tracked LeetCode users. Score = 100 − acceptance rate per accepted question.",
-    start_url: "/dashboard",
+    start_url: "/",
     display: "standalone",
     background_color: "#ffffff",
     theme_color: "#111111",

@@ -30,7 +30,7 @@ self.addEventListener("fetch", (event) => {
         })
         .catch(async () => {
           const cache = await caches.open(VERSION);
-          return cache.match(req).then((m) => m ?? cache.match("/dashboard"));
+          return cache.match(req).then((m) => m ?? cache.match("/"));
         })
     );
     return;
@@ -59,14 +59,14 @@ self.addEventListener("push", (event) => {
       body: data.body ?? "",
       icon: "/icon-192.png",
       badge: "/icon-192.png",
-      data: { url: data.url ?? "/dashboard" },
+      data: { url: data.url ?? "/" },
     })
   );
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = event.notification.data?.url ?? "/dashboard";
+  const url = event.notification.data?.url ?? "/";
   event.waitUntil(
     self.clients.matchAll({ type: "window" }).then((clients) => {
       for (const client of clients) {

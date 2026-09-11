@@ -57,8 +57,8 @@ export default function AdminLogin() {
             </Button>
           </form>
           <div className="mt-4 flex justify-center gap-2">
-            <Link href="/dashboard">
-              <Button variant="ghost" size="sm">← Dashboard</Button>
+            <Link href="/">
+              <Button variant="ghost" size="sm">← Scoreboard</Button>
             </Link>
             <ThemeToggle />
           </div>
