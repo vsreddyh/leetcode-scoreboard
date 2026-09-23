@@ -12,13 +12,12 @@ Next.js + MongoDB scoreboard. **Score per Accepted problem = 100 − acceptance 
 
 | Route | Access | Purpose |
 |---|---|---|
-| `/` | public | landing links |
-| `/dashboard` | public | totals + daily scores |
+| `/` | public | dashboard: totals + daily scores |
 | `/admin` | password | user management + sync + latest 50 |
 | `/admin/login` | public | password login |
-| `GET /api/scores` | public | `{ daily, totals }` from Mongo |
-| `POST /api/sync` | admin cookie or `Bearer CRON_SECRET` | sync all tracked users |
-| `GET /api/sync?secret=` | cron | same, for cron-job.org |
+| `GET /api/overall` | public | totals + active dates from Mongo |
+| `GET /api/day/[date]` | public | per-day scores from Mongo |
+| `GET/POST /api/sync` | admin cookie, `?secret=` or `Bearer CRON_SECRET` | sync all tracked users |
 | `GET/POST/DELETE /api/admin/users` | admin cookie | tracked-user CRUD |
 
 ## Setup
@@ -44,13 +43,15 @@ CRON_SECRET=another-long-random-string
 1. Open `/admin/login`, log in with `ADMIN_PASSWORD`.
 2. Add LeetCode usernames (stored lowercase in `trackedusers`, no seeds).
 3. Click **Run sync**, or wait for cron-job.org (every 5 min).
-4. View scores at `/dashboard`.
+4. View scores at `/`.
 
 ## Cron (all via cron-job.org — no Vercel crons)
 
 - **Every 5 min (sync):** [cron-job.org](https://cron-job.org) → URL `https://<your-app>.vercel.app/api/sync?secret=<CRON_SECRET>`, every 5 minutes. This is the only scheduled job.
 - **EOD refresh:** no separate cron — folded into the sync. The first sync tick at/after 23:30 IST re-fetches `acRate` for that day's (IST) questions and recomputes scores, guarded to run once per day (`SyncState` claim in Mongo).
-- **Digest notifications:** no separate cron. `notifyAfterSync` (called by each sync) sends the `twice-daily` digest when a sync lands within ±5 min of 11:30 AM/PM IST — this works because the 5-min sync ticks regularly.
+- **Push notifications:** no separate cron. Each sync that finds new solves sends a
+  per-sync summary (solver counts + today's IST points + leader); dead
+  subscriptions (404/410) are deleted automatically.
 - **Manual:** `/api/refresh?secret=<CRON_SECRET>` (or **Run sync** in `/admin`) still works on demand.
 - Manual test:
 
