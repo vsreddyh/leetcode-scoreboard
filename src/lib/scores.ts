@@ -55,6 +55,8 @@ export async function getOverallScores(): Promise<TotalRow[]> {
   await connectDB();
   const totals = await Submission.aggregate([
     { $match: { status: "Accepted" } },
+    // Deterministic $first: earliest solve wins, same as getScoreHistory.
+    { $sort: { date: 1 } },
     {
       $group: {
         _id: { username: "$username", titleSlug: "$titleSlug" },
@@ -112,14 +114,23 @@ export async function getScoreHistory(): Promise<DailyRow[]> {
   }));
 }
 
-/** Today's (or any date's) leaderboard: sum of scores for docs in that date bucket. */
+/** Today's (or any date's) leaderboard: sum of scores for docs in that date bucket.
+ * Dedupes by username+titleSlug (earliest solve wins), same as getOverallScores
+ * and getScoreHistory, so legacy duplicate docs can't inflate day totals. */
 export async function getDayScores(date: string): Promise<TotalRow[]> {
   await connectDB();
   const totals = await Submission.aggregate([
     { $match: { status: "Accepted", date } },
+    { $sort: { date: 1 } },
     {
       $group: {
-        _id: "$username",
+        _id: { username: "$username", titleSlug: "$titleSlug" },
+        score: { $first: "$score" },
+      },
+    },
+    {
+      $group: {
+        _id: "$_id.username",
         total: { $sum: "$score" },
         count: { $sum: 1 },
       },

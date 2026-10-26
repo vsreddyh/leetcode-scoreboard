@@ -23,7 +23,17 @@ import Link from "next/link";
 
 const ScoreProgressChart = dynamic(() => import("@/components/score-progress-chart"), {
   ssr: false,
-  loading: () => <Skeleton className="h-[380px] w-full rounded-xl" />,
+  // Mirrors the chart's own loading skeleton so the swap doesn't jump.
+  loading: () => (
+    <Card className="min-w-0">
+      <CardHeader className="p-4 sm:p-6">
+        <CardTitle className="text-sm sm:text-base">Score Progress</CardTitle>
+      </CardHeader>
+      <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+        <Skeleton className="h-56 w-full" />
+      </CardContent>
+    </Card>
+  ),
 });
 
 interface Question {
@@ -48,13 +58,17 @@ const diffColor: Record<string, string> = {
 };
 
 export default function ScoreboardDashboard() {
-  // IST today string
-  const istToday = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Kolkata",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
+  // IST today string, frozen per mount so a midnight rollover mid-session
+  // can't leave the calendar and the progress chart disagreeing by a day.
+  const [istToday] = useState(
+    () =>
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date())
+  );
 
   const [selected, setSelected] = useState<Date | undefined>(() => parseISO(istToday));
   const [dateStr, setDateStr] = useState(() => istToday);

@@ -94,11 +94,14 @@ export default function ScoreProgressChart() {
   const [fetchError, setFetchError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [range, setRange] = useState<RangeKey>("1M");
+  const [retry, setRetry] = useState(0);
   const { resolvedTheme } = useTheme();
   const elRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<echarts.ECharts | null>(null);
   // Tracks the last applied range so theme-only re-renders don't reset manual zoom.
-  const prevRange = useRef<RangeKey>(range);
+  // Null sentinel: the first data paint always counts as a change, applying the
+  // default range window (otherwise the chart would show ALL while 1M looks active).
+  const prevRange = useRef<RangeKey | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -120,7 +123,7 @@ export default function ScoreProgressChart() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [retry]);
 
   /**
    * Full-resolution model in a single pass: calendar date axis
@@ -136,11 +139,16 @@ export default function ScoreProgressChart() {
     );
     const users = [...new Set(rows.map((r) => r.username))].sort();
     const uIdx = new Map(users.map((u, i) => [u, i] as const));
-    const endMs = parseDay(todayStr);
+    // Clamp the axis end at today, but never drop future-dated docs (clock skew /
+    // bad sync bucket) — otherwise they'd vanish from cum and the chart end-value
+    // would diverge from the leaderboard.
+    let endStr = todayStr;
     let earliest = todayStr;
     for (const r of rows) {
       if (r.date < earliest) earliest = r.date;
+      if (r.date > endStr) endStr = r.date;
     }
+    const endMs = parseDay(endStr);
     const startMs = parseDay(earliest);
     const len = Math.max(1, Math.round((endMs - startMs) / 86400000) + 1);
     const dates = new Array<string>(len);
@@ -156,7 +164,6 @@ export default function ScoreProgressChart() {
     for (let u = 0; u < users.length; u++) {
       const a = cum[u];
       for (let i = 1; i < len; i++) a[i] += a[i - 1];
-      for (let i = 0; i < len; i++) a[i] = Math.round(a[i] * 100) / 100;
     }
     return { users, dates, cum };
   }, [history, todayStr]);
@@ -222,7 +229,10 @@ export default function ScoreProgressChart() {
         type: "value",
         scale: true,
         splitNumber: 4,
-        axisLabel: { color: axisColor },
+        axisLabel: {
+          color: axisColor,
+          formatter: (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1)),
+        },
         splitLine: { lineStyle: { color: splitColor, type: "dashed" } },
       },
       // Only (re)apply the range window when the range button changed — omitting
@@ -251,9 +261,9 @@ export default function ScoreProgressChart() {
         // Cumulative totals are step functions — no smoothing, or the curve
         // implies intermediate values that never existed.
         smooth: false,
-        // Keeps huge windows interactive while rendering; the axis tooltip
-        // still reads the exact per-day cumulative values from the data array.
-        sampling: "lttb",
+        // Only downsample (Largest-Triangle-Three-Buckets) once the window is
+        // big enough to matter; small windows render every point exactly.
+        ...(full.dates.length > 500 ? { sampling: "lttb" as const } : {}),
         emphasis: { focus: "series" },
         lineStyle: { width: 2 },
       })),
@@ -303,9 +313,22 @@ export default function ScoreProgressChart() {
       </CardHeader>
       <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
         {fetchError ? (
-          <p className="text-sm text-muted-foreground">
-            Couldn&apos;t load progress data. Try refreshing the page.
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm text-muted-foreground">
+              Couldn&apos;t load progress data.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setFetchError(false);
+                setLoading(true);
+                setRetry((r) => r + 1);
+              }}
+            >
+              Retry
+            </Button>
+          </div>
         ) : full.users.length === 0 ? (
           <p className="text-sm text-muted-foreground">No data yet. Add users and sync.</p>
         ) : (
