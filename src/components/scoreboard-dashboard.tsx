@@ -19,7 +19,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { NotifyToggle } from "@/components/notify-toggle";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { todayIST, formatLocalDayKey, parseDayBucket, fmtScore } from "@/lib/leetcode";
+import { todayIST, formatLocalDayKey, parseDayBucketDate, fmtScore } from "@/lib/leetcode";
 
 const ScoreProgressChart = dynamic(() => import("@/components/score-progress-chart"), {
   ssr: false,
@@ -74,10 +74,10 @@ export default function ScoreboardDashboard() {
   // to today" with it) until refresh — do not "fix" back to a live value.
   const [istToday] = useState(() => todayIST());
 
-  const [selected, setSelected] = useState<Date | undefined>(() => parseDayBucket(istToday));
+  const [selected, setSelected] = useState<Date | undefined>(() => parseDayBucketDate(istToday));
   // Controlled calendar month so "Jump to today" scrolls into view even after
   // the user paged elsewhere.
-  const [month, setMonth] = useState<Date>(() => parseDayBucket(istToday));
+  const [month, setMonth] = useState<Date>(() => parseDayBucketDate(istToday));
   const [dateStr, setDateStr] = useState(() => istToday);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [totals, setTotals] = useState<Total[]>([]);
@@ -94,7 +94,14 @@ export default function ScoreboardDashboard() {
         if (!res.ok) throw new Error(`overall ${res.status}`);
         const data = await res.json();
         if (!cancelled) {
-          setTotals(Array.isArray(data.totals) ? data.totals : []);
+          setTotals(
+            Array.isArray(data.totals)
+              ? data.totals.filter(
+                  (t: { username?: unknown; total?: unknown }) =>
+                    typeof t?.username === "string" && typeof t?.total === "number"
+                )
+              : []
+          );
           setActiveDates(Array.isArray(data.activeDates) ? data.activeDates : []);
         }
       } catch (err) {
@@ -123,7 +130,8 @@ export default function ScoreboardDashboard() {
           setQuestions(
             Array.isArray(data.questions)
               ? data.questions.filter(
-                  (q) => typeof q?.username === "string" && typeof q?.titleSlug === "string"
+                  (q: { username?: unknown; titleSlug?: unknown }) =>
+                    typeof q?.username === "string" && typeof q?.titleSlug === "string"
                 )
               : []
           );
@@ -169,10 +177,10 @@ export default function ScoreboardDashboard() {
   // Days with data for calendar highlighting (memoized: new Date[] identity
   // every render would make Calendar re-resolve modifiers each time).
   const dataDays = useMemo(
-    () => activeDates.map((d) => parseDayBucket(d)),
+    () => activeDates.map((d) => parseDayBucketDate(d)),
     [activeDates]
   );
-  const todayMarker = useMemo(() => parseDayBucket(istToday), [istToday]);
+  const todayMarker = useMemo(() => parseDayBucketDate(istToday), [istToday]);
 
   return (
     <div className="flex-1 w-full max-w-5xl mx-auto px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
@@ -236,7 +244,7 @@ export default function ScoreboardDashboard() {
               {dateStr === istToday ? "Today" : dateStr}
             </h2>
             {dateStr !== istToday && (
-              <Button variant="ghost" size="sm" onClick={() => onDayClick(parseDayBucket(istToday))}>
+              <Button variant="ghost" size="sm" onClick={() => onDayClick(parseDayBucketDate(istToday))}>
                 Jump to today
               </Button>
             )}

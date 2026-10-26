@@ -40,12 +40,15 @@ export async function getDayDetail(date: string): Promise<QuestionRow[]> {
     .lean();
   // Collapse legacy duplicate docs (same user+question) to one row, mirroring
   // the $group dedupe in getOverallScores/getScoreHistory/getDayScores. Fresh
-  // data can't hit this (unique {username,titleSlug} index).
+  // data can't hit this (unique {username,titleSlug} index). Docs with
+  // non-string username/titleSlug are dropped like the aggregation $type
+  // guards and the dashboard row filter do.
   const seen = new Set<string>();
   const rows = [];
   for (const d of docs) {
-    const u = d as { username: string };
-    const s = d as { titleSlug: string };
+    const u = d as { username?: unknown };
+    const s = d as { titleSlug?: unknown };
+    if (typeof u.username !== "string" || typeof s.titleSlug !== "string") continue;
     const key = JSON.stringify([u.username, s.titleSlug]);
     if (seen.has(key)) continue;
     seen.add(key);
@@ -189,7 +192,7 @@ export async function getScoreHistory(): Promise<DailyRow[]> {
 export async function getDayScores(date: string): Promise<TotalRow[]> {
   await connectDB();
   const totals = await Submission.aggregate([
-    { $match: { status: "Accepted", date, score: { $type: "number" } } },
+    { $match: { status: "Accepted", date, username: { $type: "string" }, score: { $type: "number" } } },
     // Same deterministic order as getOverallScores/getScoreHistory.
     { $sort: { date: 1, score: -1, _id: 1 } },
     {

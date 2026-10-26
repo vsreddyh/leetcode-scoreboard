@@ -15,7 +15,7 @@ import {
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import { useTheme } from "next-themes";
-import { SEASON_START, isValidDayKey, parseDayKey, formatDayKey, fmtScore } from "@/lib/leetcode";
+import { SEASON_START, isValidDayKey, parseDayKeyMs, formatDayKey, fmtScore } from "@/lib/leetcode";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -168,8 +168,8 @@ export default function ScoreProgressChart({ today }: { today: string }) {
     // Degenerate case: every row future-dated (clock skew) would invert the axis
     // and drop all rows from idx — clamp so the axis is at worst a single today.
     if (earliest > todayStr) earliest = todayStr;
-    const endMs = parseDayKey(endStr);
-    const startMs = parseDayKey(earliest);
+    const endMs = parseDayKeyMs(endStr);
+    const startMs = parseDayKeyMs(earliest);
     const len = Math.max(1, Math.round((endMs - startMs) / 86400000) + 1);
     const dates = new Array<string>(len);
     for (let i = 0; i < len; i++) dates[i] = formatDayKey(startMs + i * 86400000);
