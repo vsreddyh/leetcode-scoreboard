@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -134,15 +134,24 @@ export default function ScoreboardDashboard() {
     return acc;
   }, {});
 
-  // Day totals per user for selected date
+  // Day totals per user for selected date (finite-guarded like the server sort:
+  // one string-typed legacy score must not turn the accumulator into concat).
   const dayTotals = Object.entries(byUser).map(([user, qs]) => ({
     user,
     count: qs.length,
-    total: Math.round(qs.reduce((s, q) => s + q.score, 0) * 100) / 100,
+    total:
+      Math.round(
+        qs.reduce((s, q) => s + (typeof q.score === "number" && Number.isFinite(q.score) ? q.score : 0), 0) *
+          100
+      ) / 100,
   }));
 
-  // Days with data for calendar highlighting
-  const dataDays = activeDates.map((d) => parseISTDayBucket(d));
+  // Days with data for calendar highlighting (memoized: new Date[] identity
+  // every render would make Calendar re-resolve modifiers each time).
+  const dataDays = useMemo(
+    () => activeDates.map((d) => parseISTDayBucket(d)),
+    [activeDates]
+  );
 
   return (
     <div className="flex-1 w-full max-w-5xl mx-auto px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
