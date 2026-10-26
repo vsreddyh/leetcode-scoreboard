@@ -27,7 +27,14 @@ const ScoreProgressChart = dynamic(() => import("@/components/score-progress-cha
   loading: () => (
     <Card className="min-w-0">
       <CardHeader className="p-4 sm:p-6 pb-2 sm:pb-2">
-        <CardTitle className="text-sm sm:text-base">Score Progress</CardTitle>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="text-sm sm:text-base">Score Progress</CardTitle>
+          <div className="flex flex-wrap gap-1" aria-hidden="true">
+            {["1D", "1W", "1M", "6M", "1Y", "ALL"].map((r) => (
+              <div key={r} className="h-7 w-8 rounded-md bg-muted" />
+            ))}
+          </div>
+        </div>
         <p className="text-[11px] text-transparent pt-1 select-none" aria-hidden="true">
           Loading
         </p>
@@ -181,7 +188,7 @@ export default function ScoreboardDashboard() {
 
       <Separator className="my-4 sm:my-6" />
 
-      <ScoreProgressChart />
+      <ScoreProgressChart today={istToday} />
 
       <div className="grid gap-4 sm:gap-6 lg:grid-cols-[300px_minmax(0,1fr)] mt-4 sm:mt-6">
         {/* Calendar sidebar */}

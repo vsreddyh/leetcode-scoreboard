@@ -15,7 +15,7 @@ import {
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import { useTheme } from "next-themes";
-import { SEASON_START, todayIST, isValidDayKey, parseDayKey, formatDayKey } from "@/lib/leetcode";
+import { SEASON_START, isValidDayKey, parseDayKey, formatDayKey } from "@/lib/leetcode";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -40,6 +40,12 @@ type ECOption = echarts.ComposeOption<
 import type { DailyRow } from "@/lib/scores";
 
 type RangeKey = "1D" | "1W" | "1M" | "6M" | "1Y" | "ALL";
+
+interface ProgressModel {
+  users: string[];
+  dates: string[];
+  cum: number[][];
+}
 
 const RANGES: { key: RangeKey; days: number | null }[] = [
   { key: "1D", days: 1 },
@@ -83,9 +89,10 @@ function userColor(u: string): string {
   return PALETTE[Math.abs(h) % PALETTE.length];
 }
 
-export default function ScoreProgressChart() {
-  // Fixed "today" per mount so the date axis never shifts mid-session.
-  const [todayStr] = useState(() => todayIST());
+export default function ScoreProgressChart({ today }: { today: string }) {
+  // `today` comes from the dashboard's frozen per-mount IST string, so calendar
+  // and chart can never disagree across a midnight rollover mid-session.
+  const todayStr = today;
   const [history, setHistory] = useState<DailyRow[]>([]);
   const [fetchError, setFetchError] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -100,6 +107,9 @@ export default function ScoreProgressChart() {
   // re-clicking the active range snaps back to its labeled window.
   const prevZoomKey = useRef<string | null>(null);
   const [zoomNonce, setZoomNonce] = useState(0);
+  // Last applied dataset identity. A new model object means fresh data, which
+  // needs a full component replace (series list may differ) plus the window.
+  const prevFullRef = useRef<ProgressModel | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -131,7 +141,7 @@ export default function ScoreProgressChart() {
    * (earliest solve → today) + cumulative totals per user.
    * Rows with malformed dates are skipped so one bad doc can't break the axis.
    */
-  const full = useMemo(() => {
+  const full: ProgressModel = useMemo(() => {
     const rows = history.filter(
       (r) =>
         typeof r.username === "string" &&
@@ -202,7 +212,8 @@ export default function ScoreProgressChart() {
 
   // Data + range + theme → chart option. ECharts owns zoom/pan state internally;
   // the range window is only re-applied when the range button changes, so a
-  // theme toggle never resets a manual zoom.
+  // theme toggle never resets a manual zoom. dataZoom styling is always sent
+  // (so the slider follows the theme); only the window is gated.
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart || full.users.length === 0) return;
@@ -224,6 +235,11 @@ export default function ScoreProgressChart() {
       prevZoomKey.current = key;
       return changed;
     })();
+    // Fresh data also needs a full component replace (series list may differ);
+    // theme-only updates plain-merge so the manual zoom window survives.
+    const dataChanged = prevFullRef.current !== full;
+    prevFullRef.current = full;
+    const resetWindow = rangeChanged || dataChanged;
 
     const option: ECOption = {
       // No top-level palette: every series sets its stable userColor, so a
@@ -276,42 +292,38 @@ export default function ScoreProgressChart() {
         },
         splitLine: { lineStyle: { color: splitColor, type: "dashed" } },
       },
-      // Only (re)apply the range window when the range button changed — omitting
-      // dataZoom otherwise leaves any manual zoom/pan untouched.
-      ...(rangeChanged
-        ? {
-            dataZoom: [
-              {
-                type: "inside",
-                xAxisIndex: 0,
-                // Don't hijack page scroll: wheel over the chart scrolls the page;
-                // zoom via pinch, drag-pan, or the slider below.
-                zoomOnMouseWheel: false,
-                moveOnMouseWheel: false,
-                ...window,
-              },
-              {
-                type: "slider",
-                xAxisIndex: 0,
-                height: 24,
-                bottom: 8,
-                borderColor: splitColor,
-                textStyle: { color: axisColor },
-                handleStyle: { color: axisColor, borderColor: axisColor },
-                moveHandleStyle: { color: splitColor },
-                dataBackground: {
-                  lineStyle: { color: splitColor },
-                  areaStyle: { color: splitColor },
-                },
-                selectedDataBackground: {
-                  lineStyle: { color: axisColor },
-                  areaStyle: { color: axisColor },
-                },
-                ...window,
-              },
-            ],
-          }
-        : {}),
+      // Always sent (theme colors must update on toggle); the window itself is
+      // only (re)applied on range/data change, leaving manual zoom untouched.
+      dataZoom: [
+        {
+          type: "inside",
+          xAxisIndex: 0,
+          // Don't hijack page scroll: wheel over the chart scrolls the page;
+          // zoom via pinch, drag-pan, or the slider below.
+          zoomOnMouseWheel: false,
+          moveOnMouseWheel: false,
+          ...(resetWindow ? window : {}),
+        },
+        {
+          type: "slider",
+          xAxisIndex: 0,
+          height: 24,
+          bottom: 8,
+          borderColor: splitColor,
+          textStyle: { color: axisColor },
+          handleStyle: { color: axisColor, borderColor: axisColor },
+          moveHandleStyle: { color: splitColor },
+          dataBackground: {
+            lineStyle: { color: splitColor },
+            areaStyle: { color: splitColor },
+          },
+          selectedDataBackground: {
+            lineStyle: { color: axisColor },
+            areaStyle: { color: axisColor },
+          },
+          ...(resetWindow ? window : {}),
+        },
+      ],
       series: full.users.map((u, i) => ({
         name: u,
         type: "line",
@@ -333,7 +345,10 @@ export default function ScoreProgressChart() {
       })),
     };
     chart.setOption(option, {
-      replaceMerge: rangeChanged ? ["series", "xAxis", "dataZoom"] : ["series", "xAxis"],
+      // Full component replace only when the window or data changed; theme-only
+      // updates plain-merge so dataZoom keeps its manual zoom (colors refresh,
+      // start/end persist when omitted).
+      replaceMerge: resetWindow ? ["series", "xAxis", "dataZoom"] : ["series", "xAxis"],
     });
   }, [full, range, zoomNonce, resolvedTheme]);
 
@@ -341,7 +356,14 @@ export default function ScoreProgressChart() {
     return (
       <Card className="min-w-0">
         <CardHeader className="p-4 sm:p-6 pb-2 sm:pb-2">
-          <CardTitle className="text-sm sm:text-base">Score Progress</CardTitle>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle className="text-sm sm:text-base">Score Progress</CardTitle>
+            <div className="flex flex-wrap gap-1" aria-hidden="true">
+              {RANGES.map((r) => (
+                <div key={r.key} className="h-7 w-8 rounded-md bg-muted" />
+              ))}
+            </div>
+          </div>
           <p className="text-[11px] text-transparent pt-1 select-none" aria-hidden="true">
             Loading
           </p>
