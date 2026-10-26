@@ -134,8 +134,15 @@ export async function getScoreHistory(): Promise<DailyRow[]> {
   const rows = await Submission.aggregate([
     // Shape pre-filter so malformed buckets never travel over the wire (same
     // shape rule as the day route + getActiveDates; full calendar validity is
-    // still enforced client-side by isValidDayKey).
-    { $match: { status: "Accepted", date: { $regex: /^\d{4}-\d{2}-\d{2}$/ } } },
+    // still enforced client-side by isValidDayKey). Non-string usernames would
+    // also be dropped by the chart filter, so reject them here too.
+    {
+      $match: {
+        status: "Accepted",
+        username: { $type: "string" },
+        date: { $regex: /^\d{4}-\d{2}-\d{2}$/ },
+      },
+    },
     { $sort: { date: 1, score: -1, _id: 1 } },
     {
       $group: {
@@ -155,7 +162,9 @@ export async function getScoreHistory(): Promise<DailyRow[]> {
   return rows.map((r) => ({
     username: r._id.username as string,
     date: r._id.date as string,
-    total: Math.round((r.total as number) * 100) / 100,
+    // Raw total: the chart prefix-sums buckets then rounds once at display
+    // (fmtScore), so pre-rounding here would drift up to ~1c per bucket.
+    total: r.total as number,
   }));
 }
 

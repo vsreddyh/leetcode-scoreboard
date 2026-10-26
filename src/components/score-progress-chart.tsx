@@ -429,7 +429,7 @@ export default function ScoreProgressChart({ today }: { today: string }) {
         </p>
       </CardHeader>
       <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
-        {fetchError ? (
+        {fetchError && !refreshing ? (
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-sm text-muted-foreground">
               Couldn&apos;t load progress data.
@@ -438,7 +438,8 @@ export default function ScoreProgressChart({ today }: { today: string }) {
               variant="outline"
               size="sm"
               onClick={() => {
-                setFetchError(false);
+                // Keep the error visible until success: clearing it here would
+                // fall through to "No data yet" until the refetch resolves.
                 setRefreshing(true);
                 setRetry((r) => r + 1);
               }}
@@ -447,7 +448,11 @@ export default function ScoreProgressChart({ today }: { today: string }) {
             </Button>
           </div>
         ) : full.users.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No data yet. Add users and sync.</p>
+          refreshing ? (
+            <Skeleton className="h-[300px] w-full" />
+          ) : (
+            <p className="text-sm text-muted-foreground">No data yet. Add users and sync.</p>
+          )
         ) : (
           <div
             ref={elRef}
