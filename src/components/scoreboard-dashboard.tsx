@@ -434,7 +434,7 @@ export default function ScoreboardDashboard() {
                             {fmtScore(t.total)}
                           </TableCell>
                           <TableCell className="text-right text-muted-foreground tabular-nums">
-                            {t.count}
+                            {Number.isFinite(t.count) ? t.count : 0}
                           </TableCell>
                         </TableRow>
                       ))}

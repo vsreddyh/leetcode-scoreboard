@@ -167,9 +167,9 @@ export async function getScoreHistory(): Promise<DailyRow[]> {
   await connectDB();
   const rows = await Submission.aggregate([
     // Shape pre-filter so malformed buckets never travel over the wire (same
-    // shape rule as the day route + getActiveDates; full calendar validity is
-    // still enforced client-side by isValidDayKey). Non-string usernames would
-    // also be dropped by the chart filter, so reject them here too.
+    // shape rule as the day route + getActiveDates; full calendar validity,
+    // including impossible-calendar dates like 2026-02-30, is enforced
+    // client-side by isValidDayKey — see the hedge on getOverallScores).
     {
       $match: {
         status: "Accepted",
