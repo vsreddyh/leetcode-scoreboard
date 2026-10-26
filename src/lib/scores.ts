@@ -1,5 +1,5 @@
 import { connectDB } from "@/lib/db";
-import { getQuestionDetails, scoreFor, todayIST, SEASON_START } from "@/lib/leetcode";
+import { getQuestionDetails, scoreFor, todayIST, SEASON_START, isValidDayKey } from "@/lib/leetcode";
 import { Submission } from "@/models/Submission";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -66,11 +66,14 @@ export async function getDayDetail(date: string): Promise<QuestionRow[]> {
 
 export async function getActiveDates(): Promise<string[]> {
   await connectDB();
-  const dates = await Submission.distinct("date", { status: "Accepted" });
+  const dates = (await Submission.distinct("date", { status: "Accepted" })) as string[];
   // Keep the calendar consistent with the chart axis, which folds everything
-  // outside [SEASON_START, today] into the edge buckets.
+  // outside [SEASON_START, today] into the edge buckets — and drop malformed
+  // buckets the chart would reject, so no highlighted day lacks a chart point.
   const today = todayIST();
-  return dates.sort().filter((d) => d >= SEASON_START && d <= today);
+  return dates
+    .sort()
+    .filter((d) => isValidDayKey(d) && d >= SEASON_START && d <= today);
 }
 
 export async function getOverallScores(): Promise<TotalRow[]> {

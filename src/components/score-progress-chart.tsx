@@ -15,7 +15,7 @@ import {
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import { useTheme } from "next-themes";
-import { SEASON_START, todayIST } from "@/lib/leetcode";
+import { SEASON_START, todayIST, isValidDayKey } from "@/lib/leetcode";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -137,14 +137,11 @@ export default function ScoreProgressChart() {
    * Rows with malformed dates are skipped so one bad doc can't break the axis.
    */
   const full = useMemo(() => {
-    // Round-trip check: Date.UTC normalizes overflow (2026-13-99 → 2027), so a
-    // regex match alone can't reject impossible calendar dates.
     const rows = history.filter(
       (r) =>
         typeof r.username === "string" &&
         r.username.length > 0 &&
-        /^\d{4}-\d{2}-\d{2}$/.test(r.date) &&
-        formatDay(parseDay(r.date)) === r.date &&
+        isValidDayKey(r.date) &&
         typeof r.total === "number" &&
         Number.isFinite(r.total)
     );
@@ -332,8 +329,11 @@ export default function ScoreProgressChart() {
   if (loading) {
     return (
       <Card className="min-w-0">
-        <CardHeader className="p-4 sm:p-6">
+        <CardHeader className="p-4 sm:p-6 pb-2 sm:pb-2">
           <CardTitle className="text-sm sm:text-base">Score Progress</CardTitle>
+          <p className="text-[11px] text-transparent pt-1 select-none" aria-hidden="true">
+            Loading
+          </p>
         </CardHeader>
         <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
           <Skeleton className="h-[300px] w-full" />
@@ -358,7 +358,12 @@ export default function ScoreProgressChart() {
                 size="sm"
                 className="h-7 px-2 text-xs"
                 aria-pressed={range === r.key}
-                disabled={!interactive}
+                disabled={!interactive || (r.days != null && r.days > full.dates.length)}
+                title={
+                  r.days != null && r.days > full.dates.length
+                    ? "Not enough history yet for this range"
+                    : undefined
+                }
                 onClick={() => {
                   // Always re-apply, even for the active range, so a click snaps
                   // back from any manual zoom/pan to the labeled window.

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { format, isToday, parseISO } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -27,8 +27,11 @@ const ScoreProgressChart = dynamic(() => import("@/components/score-progress-cha
   // Mirrors the chart's own loading skeleton so the swap doesn't jump.
   loading: () => (
     <Card className="min-w-0">
-      <CardHeader className="p-4 sm:p-6">
+      <CardHeader className="p-4 sm:p-6 pb-2 sm:pb-2">
         <CardTitle className="text-sm sm:text-base">Score Progress</CardTitle>
+        <p className="text-[11px] text-transparent pt-1 select-none" aria-hidden="true">
+          Loading
+        </p>
       </CardHeader>
       <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
         <Skeleton className="h-[300px] w-full" />
@@ -83,8 +86,8 @@ export default function ScoreboardDashboard() {
           setTotals(Array.isArray(data.totals) ? data.totals : []);
           setActiveDates(Array.isArray(data.activeDates) ? data.activeDates : []);
         }
-      } catch {
-        /* empty */
+        } catch (err) {
+        console.error(`[dashboard] overall fetch failed: ${err instanceof Error ? err.message : String(err)}`);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -104,7 +107,8 @@ export default function ScoreboardDashboard() {
         if (!res.ok) throw new Error(`day ${res.status}`);
         const data = await res.json();
         if (!cancelled) setQuestions(Array.isArray(data.questions) ? data.questions : []);
-      } catch {
+      } catch (err) {
+        console.error(`[dashboard] day fetch failed: ${err instanceof Error ? err.message : String(err)}`);
         if (!cancelled) setQuestions([]);
       } finally {
         if (!cancelled) setDayLoading(false);
@@ -199,7 +203,7 @@ export default function ScoreboardDashboard() {
             <h2 className="text-base sm:text-lg font-semibold">
               {dateStr === istToday ? "Today" : dateStr}
             </h2>
-            {!isToday(selected ?? new Date()) && (
+            {dateStr !== istToday && (
               <Button variant="ghost" size="sm" onClick={() => onDayClick(parseISO(istToday))}>
                 Jump to today
               </Button>

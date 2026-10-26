@@ -101,6 +101,15 @@ export function todayIST(): string {
 /** Fixed season start (IST date bucket). Sync keeps everything on/after this. */
 export const SEASON_START = "2026-09-08";
 
+/** True for real IST calendar buckets: shape check + round-trip guard, since
+ * Date.UTC normalizes overflow (2026-13-99 rolls into 2027 instead of NaN). */
+export function isValidDayKey(s: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const [y, m, d] = s.split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d));
+  return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d;
+}
+
 /** Current IST wall-clock minutes since midnight. */
 export function istMinutesNow(): number {
   const now = new Date();
