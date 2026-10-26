@@ -142,6 +142,7 @@ export async function getScoreHistory(): Promise<DailyRow[]> {
       $match: {
         status: "Accepted",
         username: { $type: "string" },
+        score: { $type: "number" },
         date: { $regex: /^\d{4}-\d{2}-\d{2}$/ },
       },
     },

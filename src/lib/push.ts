@@ -1,6 +1,7 @@
 import webpush from "web-push";
 import { connectDB } from "@/lib/db";
 import { PushSub } from "@/models/PushSub";
+import { fmtScore } from "@/lib/leetcode";
 
 let configured = false;
 
@@ -95,7 +96,7 @@ export async function notifyAfterSync(synced: Record<string, number>) {
     let todayLeader = "";
     try {
       const { getDayScores } = await import("@/lib/scores");
-      const { todayIST, fmtScore } = await import("@/lib/leetcode");
+      const { todayIST } = await import("@/lib/leetcode");
       const totals = await getDayScores(todayIST());
       todayPts = new Map(totals.map((t) => [t.username, t.total]));
       const leader = totals[0];
