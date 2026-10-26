@@ -73,19 +73,25 @@ export default function ScoreboardDashboard() {
 
   // Fetch overall + active dates on mount
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
         const res = await fetch("/api/overall", { cache: "no-store" });
         if (!res.ok) throw new Error(`overall ${res.status}`);
         const data = await res.json();
-        setTotals(Array.isArray(data.totals) ? data.totals : []);
-        setActiveDates(Array.isArray(data.activeDates) ? data.activeDates : []);
+        if (!cancelled) {
+          setTotals(Array.isArray(data.totals) ? data.totals : []);
+          setActiveDates(Array.isArray(data.activeDates) ? data.activeDates : []);
+        }
       } catch {
         /* empty */
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Fetch day detail on mount and whenever the selected date changes
