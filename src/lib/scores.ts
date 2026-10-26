@@ -68,10 +68,20 @@ export async function getDayDetail(date: string): Promise<QuestionRow[]> {
       typeof (d as { title?: unknown }).title === "string" ? (d as { title: string }).title : "",
     titleSlug: (d as { titleSlug: string }).titleSlug,
     date: (d as { date: string }).date,
-    acRate: (d as { acRate?: number | null }).acRate ?? null,
-    difficulty: (d as { difficulty?: string | null }).difficulty ?? null,
+    // Strict guards: a legacy non-numeric acRate would crash toFixed() in the
+    // day table, and a non-string difficulty/lang would render garbage.
+    acRate:
+      typeof (d as { acRate?: unknown }).acRate === "number" &&
+      Number.isFinite((d as { acRate?: unknown }).acRate as number)
+        ? (d as { acRate: number }).acRate
+        : null,
+    difficulty:
+      typeof (d as { difficulty?: unknown }).difficulty === "string"
+        ? (d as { difficulty: string }).difficulty
+        : null,
     score: num((d as { score?: unknown }).score),
-    lang: (d as { lang?: string }).lang ?? "",
+    lang:
+      typeof (d as { lang?: unknown }).lang === "string" ? (d as { lang: string }).lang : "",
   }));
 }
 
@@ -103,20 +113,20 @@ export async function getOverallScores(): Promise<TotalRow[]> {
     // Non-numeric scores are ignored by $sum, matching the strict JS guards in
     // getDayDetail and the chart filter (all untriggerable via scoreFor).
     // Same username shape guard as history: non-string usernames are dropped
-    // client-side from the chart, so exclude them here too. Same date rule as
-    // history (shape + [SEASON_START, today] range): overall is NOT a
-    // superset — out-of-range buckets are excluded everywhere, so all four
-    // read paths agree. (Impossible-calendar keys *inside* the range still
-    // pass the shape check and are dropped client-side only; untriggerable
-    // via dayKey()/todayIST().)
+    // client-side from the chart, so exclude them here too. Same date shape
+    // rule as history — but NO range filter (see NOTE on the $match below).
     {
       $match: {
         status: "Accepted",
         username: { $type: "string" },
         score: { $type: "number" },
-        date: { $regex: /^\d{4}-\d{2}-\d{2}$/, $gte: SEASON_START, $lte: todayIST() },
+        date: { $regex: /^\d{4}-\d{2}-\d{2}$/ },
       },
     },
+    // NOTE: no date-range filter here on purpose — history and day views count
+    // every valid-shape doc (folding out-of-range ones into the edge buckets),
+    // so overall must too, or the end-values diverge by exactly the
+    // out-of-range sum.
     // Deterministic $first: earliest solve wins, ties by highest score, then _id.
     // Same order as every other read path so same-date duplicates always agree.
     { $sort: { date: 1, score: -1, _id: 1 } },

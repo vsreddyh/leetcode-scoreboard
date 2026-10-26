@@ -243,6 +243,26 @@ export default function ScoreProgressChart({ today }: { today: string }) {
     prevFullRef.current = full;
     const resetWindow = rangeChanged || dataChanged;
 
+    const series = full.users.map((u, i) => ({
+      name: u,
+      type: "line",
+      data: full.cum[i],
+      // Stable identity color (not palette order) so lines keep their color
+      // when the roster changes.
+      color: userColor(u),
+      // Dots on tiny axes (e.g. single-day dataset): otherwise a lone point
+      // is invisible.
+      showSymbol: full.dates.length <= 2,
+      // Cumulative totals are step functions — no smoothing, or the curve
+      // implies intermediate values that never existed.
+      smooth: false,
+      // Only downsample (Largest-Triangle-Three-Buckets) once the axis exceeds
+      // a full season (~366 days); smaller windows render every point exactly.
+      ...(full.dates.length > 366 ? { sampling: "lttb" as const } : {}),
+      emphasis: { focus: "series" },
+      lineStyle: { width: 2 },
+    }));
+
     const option: ECOption = {
       // No top-level palette: every series sets its stable userColor, so a
       // global here would be dead config to keep in sync.
@@ -327,36 +347,14 @@ export default function ScoreProgressChart({ today }: { today: string }) {
           ...(resetWindow ? window : {}),
         },
       ],
-      series: full.users.map((u, i) => ({
-        name: u,
-        type: "line",
-        data: full.cum[i],
-        // Stable identity color (not palette order) so lines keep their color
-        // when the roster changes.
-        color: userColor(u),
-        // Dots on tiny axes (e.g. single-day dataset): otherwise a lone point
-        // is invisible.
-        showSymbol: full.dates.length <= 2,
-        // Cumulative totals are step functions — no smoothing, or the curve
-        // implies intermediate values that never existed.
-        smooth: false,
-        // Only downsample (Largest-Triangle-Three-Buckets) once the axis exceeds
-        // a full season (~366 days); smaller windows render every point exactly.
-        ...(full.dates.length > 366 ? { sampling: "lttb" as const } : {}),
-        emphasis: { focus: "series" },
-        lineStyle: { width: 2 },
-      })),
     };
     if (resetWindow) {
-      chart.setOption(option, { replaceMerge: ["series", "xAxis", "dataZoom"] });
+      chart.setOption({ ...option, series }, { replaceMerge: ["series", "xAxis", "dataZoom"] });
     } else {
-      // Theme-only updates skip the series entirely (styling-only setOption):
-      // data is theme-independent, so resending it would just dispose and
-      // re-animate every line. Plain merge keeps the manual dataZoom window
+      // Theme-only: styling-only setOption with no series — lines neither
+      // dispose nor re-animate. Plain merge keeps the manual dataZoom window
       // (start/end persist when omitted) and refreshes all chrome colors.
-      const { series: _dropped, ...styleOption } = option;
-      void _dropped;
-      chart.setOption(styleOption);
+      chart.setOption(option);
     }
   }, [full, range, zoomNonce, resolvedTheme]);
 
