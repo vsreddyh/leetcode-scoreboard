@@ -193,8 +193,9 @@ export async function getDayScores(date: string): Promise<TotalRow[]> {
   await connectDB();
   const totals = await Submission.aggregate([
     { $match: { status: "Accepted", date, username: { $type: "string" }, score: { $type: "number" } } },
-    // Same deterministic order as getOverallScores/getScoreHistory.
-    { $sort: { date: 1, score: -1, _id: 1 } },
+    // Same deterministic tiebreaks as getOverallScores/getScoreHistory
+    // (score desc, _id asc). No date key: the $match above pins a single date.
+    { $sort: { score: -1, _id: 1 } },
     {
       $group: {
         _id: { username: "$username", titleSlug: "$titleSlug" },

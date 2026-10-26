@@ -19,7 +19,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { NotifyToggle } from "@/components/notify-toggle";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { todayIST, formatLocalDayKey, parseDayBucketDate, fmtScore } from "@/lib/leetcode";
+import { todayIST, formatLocalDayKey, parseDayBucketDate, isValidDayKey, fmtScore } from "@/lib/leetcode";
 
 const ScoreProgressChart = dynamic(() => import("@/components/score-progress-chart"), {
   ssr: false,
@@ -98,7 +98,9 @@ export default function ScoreboardDashboard() {
             Array.isArray(data.totals)
               ? data.totals.filter(
                   (t: { username?: unknown; total?: unknown }) =>
-                    typeof t?.username === "string" && typeof t?.total === "number"
+                    typeof t?.username === "string" &&
+                    typeof t?.total === "number" &&
+                    Number.isFinite(t.total)
                 )
               : []
           );
@@ -165,19 +167,25 @@ export default function ScoreboardDashboard() {
   // Day totals per user for selected date (raw sums, finite-guarded so one
   // string-typed legacy score can't turn the accumulator into concat;
   // fmtScore rounds once at render — same single-rounding rule as chart cum).
-  const dayTotals = Object.entries(byUser).map(([user, qs]) => ({
-    user,
-    count: qs.length,
-    total: qs.reduce(
-      (s, q) => s + (typeof q.score === "number" && Number.isFinite(q.score) ? q.score : 0),
-      0
-    ),
-  }));
+  // Sorted by total desc like the Overall Leaderboard (insertion order would
+  // rank by highest single solve instead).
+  const dayTotals = Object.entries(byUser)
+    .map(([user, qs]) => ({
+      user,
+      count: qs.length,
+      total: qs.reduce(
+        (s, q) => s + (typeof q.score === "number" && Number.isFinite(q.score) ? q.score : 0),
+        0
+      ),
+    }))
+    .sort((a, b) => b.total - a.total);
 
   // Days with data for calendar highlighting (memoized: new Date[] identity
   // every render would make Calendar re-resolve modifiers each time).
+  // isValidDayKey mirrors the server filter so a future server regression
+  // can't feed the calendar an unparseable bucket.
   const dataDays = useMemo(
-    () => activeDates.map((d) => parseDayBucketDate(d)),
+    () => activeDates.filter(isValidDayKey).map((d) => parseDayBucketDate(d)),
     [activeDates]
   );
   const todayMarker = useMemo(() => parseDayBucketDate(istToday), [istToday]);
