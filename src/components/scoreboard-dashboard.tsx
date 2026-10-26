@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { format, isToday, parseISO } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -94,20 +94,6 @@ export default function ScoreboardDashboard() {
     })();
   }, []);
 
-  // Fetch day detail when date changes
-  const fetchDay = useCallback(async (d: string) => {
-    setDayLoading(true);
-    try {
-      const res = await fetch(`/api/day/${d}`);
-      const data = await res.json();
-      setQuestions(data.questions ?? []);
-    } catch {
-      setQuestions([]);
-    } finally {
-      setDayLoading(false);
-    }
-  }, []);
-
   // Fetch day detail on mount and whenever the selected date changes
   useEffect(() => {
     let cancelled = false;
@@ -131,8 +117,9 @@ export default function ScoreboardDashboard() {
   function onDayClick(day: Date) {
     setSelected(day);
     const ds = format(day, "yyyy-MM-dd");
+    // The [dateStr] effect below owns fetching; no direct fetch here so two
+    // concurrent requests can't race.
     setDateStr(ds);
-    fetchDay(ds);
   }
 
   // Group questions by user for the selected day

@@ -116,8 +116,9 @@ export async function getScoreHistory(): Promise<DailyRow[]> {
 }
 
 /** Today's (or any date's) leaderboard: sum of scores for docs in that date bucket.
- * Dedupes by username+titleSlug (earliest solve wins), same as getOverallScores
- * and getScoreHistory, so legacy duplicate docs can't inflate day totals. */
+ * Dedupes by username+titleSlug (highest score wins ties by _id order), same
+ * family of rules as getOverallScores/getScoreHistory, so legacy duplicate
+ * docs can't inflate day totals. */
 export async function getDayScores(date: string): Promise<TotalRow[]> {
   await connectDB();
   const totals = await Submission.aggregate([

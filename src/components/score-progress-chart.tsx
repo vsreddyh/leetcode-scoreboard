@@ -15,6 +15,7 @@ import {
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import { useTheme } from "next-themes";
+import { SEASON_START } from "@/lib/leetcode";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -87,6 +88,11 @@ function formatDay(ms: number): string {
   return `${y}-${m}-${day}`;
 }
 
+/** Round to cents for display (tooltip + axis share this so they never disagree). */
+function cents(v: number): string {
+  return String(Math.round(v * 100) / 100);
+}
+
 export default function ScoreProgressChart() {
   // Fixed "today" per mount so the date axis never shifts mid-session.
   const [todayStr] = useState(istToday);
@@ -133,10 +139,12 @@ export default function ScoreProgressChart() {
    * Rows with malformed dates are skipped so one bad doc can't break the axis.
    */
   const full = useMemo(() => {
+    // Round-trip check: Date.UTC normalizes overflow (2026-13-99 → 2027), so a
+    // regex match alone can't reject impossible calendar dates.
     const rows = history.filter(
       (r) =>
         /^\d{4}-\d{2}-\d{2}$/.test(r.date) &&
-        Number.isFinite(parseDay(r.date)) &&
+        formatDay(parseDay(r.date)) === r.date &&
         typeof r.total === "number" &&
         Number.isFinite(r.total)
     );
@@ -151,6 +159,9 @@ export default function ScoreProgressChart() {
       if (r.date < earliest) earliest = r.date;
       if (r.date > endStr) endStr = r.date;
     }
+    // One ancient/typo bucket must not materialize a thousand-year axis: sync
+    // keeps everything on/after season start, so clamp there.
+    if (earliest < SEASON_START) earliest = SEASON_START;
     const endMs = parseDay(endStr);
     const startMs = parseDay(earliest);
     const len = Math.max(1, Math.round((endMs - startMs) / 86400000) + 1);
@@ -175,6 +186,9 @@ export default function ScoreProgressChart() {
   useEffect(() => {
     const el = elRef.current;
     if (!el || loading || full.users.length === 0) return;
+    // Reset the zoom key: a re-created instance (StrictMode double-effect,
+    // retry changing the user count) must re-apply the range window.
+    prevZoomKey.current = null;
     const chart = echarts.init(el, null, { renderer: "canvas" });
     chartRef.current = chart;
     const ro = new ResizeObserver(() => chart.resize());
@@ -217,7 +231,7 @@ export default function ScoreProgressChart() {
       tooltip: {
         trigger: "axis",
         axisPointer: { type: "line" },
-        valueFormatter: (v) => (typeof v === "number" ? String(Math.round(v * 100) / 100) : String(v)),
+        valueFormatter: (v) => (typeof v === "number" ? cents(v) : String(v)),
       },
       legend: { type: "scroll", textStyle: { color: axisColor } },
       grid: { left: 48, right: 16, top: 36, bottom: 64 },
@@ -238,7 +252,8 @@ export default function ScoreProgressChart() {
         splitNumber: 4,
         axisLabel: {
           color: axisColor,
-          formatter: (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1)),
+          // Same cents rounding as the tooltip so axis and tooltip never disagree.
+          formatter: (v: number) => cents(v),
         },
         splitLine: { lineStyle: { color: splitColor, type: "dashed" } },
       },
