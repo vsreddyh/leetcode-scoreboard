@@ -30,10 +30,28 @@ export interface TotalRow {
 
 export async function getDayDetail(date: string): Promise<QuestionRow[]> {
   await connectDB();
+  // Same deterministic order as the deduped aggregations (earliest solve wins,
+  // ties by highest score, then _id), so the collapse below picks the same doc
+  // the leaderboard/chart count.
   const docs = await Submission.find({ date, status: "Accepted" })
-    .sort({ score: -1 })
+    .sort({ date: 1, score: -1, _id: 1 })
     .lean();
-  return docs.map((d) => ({
+  // Collapse legacy duplicate docs (same user+question) to one row, mirroring
+  // the $group dedupe in getOverallScores/getScoreHistory/getDayScores. Fresh
+  // data can't hit this (unique {username,titleSlug} index).
+  const seen = new Set<string>();
+  const rows = [];
+  for (const d of docs) {
+    const u = d as { username: string };
+    const s = d as { titleSlug: string };
+    const key = `${u.username} ${s.titleSlug}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push(d);
+  }
+  // Display order: highest score first (previous behavior).
+  rows.sort((a, b) => ((b as { score: number }).score ?? 0) - ((a as { score: number }).score ?? 0));
+  return rows.map((d) => ({
     username: (d as { username: string }).username,
     title: (d as { title: string }).title ?? "",
     titleSlug: (d as { titleSlug: string }).titleSlug,
@@ -56,7 +74,7 @@ export async function getOverallScores(): Promise<TotalRow[]> {
   const totals = await Submission.aggregate([
     { $match: { status: "Accepted" } },
     // Deterministic $first: earliest solve wins, ties by highest score, then _id.
-    // Same order as getScoreHistory/getDayScores so all three always agree.
+    // Same order as every other read path so all of them always agree.
     { $sort: { date: 1, score: -1, _id: 1 } },
     {
       $group: {

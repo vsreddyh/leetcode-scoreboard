@@ -64,6 +64,14 @@ const PALETTE = [
   "#db2777",
   "#0891b2",
   "#65a30d",
+  "#0d9488",
+  "#c026d3",
+  "#ea580c",
+  "#4f46e5",
+  "#be123c",
+  "#15803d",
+  "#a16207",
+  "#0369a1",
 ];
 
 function istToday(): string {
@@ -89,7 +97,7 @@ function formatDay(ms: number): string {
 }
 
 /** Round to cents for display (tooltip + axis share this so they never disagree). */
-function cents(v: number): string {
+function fmtScore(v: number): string {
   return (Math.round(v * 100) / 100).toFixed(2);
 }
 
@@ -238,7 +246,10 @@ export default function ScoreProgressChart() {
       tooltip: {
         trigger: "axis",
         axisPointer: { type: "line" },
-        valueFormatter: (v) => (typeof v === "number" ? cents(v) : String(v)),
+        backgroundColor: dark ? "#09090b" : "#ffffff",
+        borderColor: dark ? "#27272a" : "#e4e4e7",
+        textStyle: { color: dark ? "#fafafa" : "#09090b" },
+        valueFormatter: (v) => (typeof v === "number" ? fmtScore(v) : String(v)),
       },
       legend: { type: "scroll", textStyle: { color: axisColor } },
       grid: { left: 48, right: 16, top: 36, bottom: 64 },
@@ -262,7 +273,7 @@ export default function ScoreProgressChart() {
         axisLabel: {
           color: axisColor,
           // Same cents rounding as the tooltip so axis and tooltip never disagree.
-          formatter: (v: number) => cents(v),
+          formatter: (v: number) => fmtScore(v),
         },
         splitLine: { lineStyle: { color: splitColor, type: "dashed" } },
       },
