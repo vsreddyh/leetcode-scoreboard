@@ -15,7 +15,7 @@ import {
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import { useTheme } from "next-themes";
-import { SEASON_START, todayIST, isValidDayKey } from "@/lib/leetcode";
+import { SEASON_START, todayIST, isValidDayKey, parseDayKey, formatDayKey } from "@/lib/leetcode";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -69,23 +69,18 @@ const PALETTE = [
   "#0369a1",
 ];
 
-function parseDay(s: string): number {
-  const [y, m, d] = s.split("-").map(Number);
-  return Date.UTC(y, m - 1, d);
-}
-
-function formatDay(ms: number): string {
-  const d = new Date(ms);
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(d.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
 /** Round to cents for display (tooltip + axis share this so they never disagree). */
 function fmtScore(v: number): string {
   // + 0 normalizes -0 so totals never render as "-0.00".
   return (Math.round(v * 100) / 100 + 0).toFixed(2);
+}
+
+/** Stable per-user color: the roster is alphabetical, so series-index colors
+ * would re-seat every line after an insertion point when users join/leave. */
+function userColor(u: string): string {
+  let h = 0;
+  for (let i = 0; i < u.length; i++) h = (Math.imul(h, 31) + u.charCodeAt(i)) | 0;
+  return PALETTE[Math.abs(h) % PALETTE.length];
 }
 
 export default function ScoreProgressChart() {
@@ -148,9 +143,10 @@ export default function ScoreProgressChart() {
     const users = [...new Set(rows.map((r) => r.username))].sort();
     const uIdx = new Map(users.map((u, i) => [u, i] as const));
     // Clamp both ends so one ancient/typo bucket can't materialize a huge axis:
-    // sync keeps everything on/after SEASON_START. Out-of-range rows below are
-    // folded into the edge buckets (never dropped) so cum still matches the
-    // leaderboard exactly.
+    // sync keeps everything on/after SEASON_START. Out-of-range but VALID rows
+    // below are folded into the edge buckets (never dropped) so cum still
+    // matches the leaderboard exactly; malformed rows are intentionally dropped
+    // by the filter above instead (one bad doc must not break the axis).
     const endStr = todayStr;
     let earliest = todayStr;
     for (const r of rows) {
@@ -160,11 +156,11 @@ export default function ScoreProgressChart() {
     // Degenerate case: every row future-dated (clock skew) would invert the axis
     // and drop all rows from idx — clamp so the axis is at worst a single today.
     if (earliest > todayStr) earliest = todayStr;
-    const endMs = parseDay(endStr);
-    const startMs = parseDay(earliest);
+    const endMs = parseDayKey(endStr);
+    const startMs = parseDayKey(earliest);
     const len = Math.max(1, Math.round((endMs - startMs) / 86400000) + 1);
     const dates = new Array<string>(len);
-    for (let i = 0; i < len; i++) dates[i] = formatDay(startMs + i * 86400000);
+    for (let i = 0; i < len; i++) dates[i] = formatDayKey(startMs + i * 86400000);
 
     const idx = new Map<string, number>(dates.map((d, i) => [d, i]));
     const cum: number[][] = users.map(() => new Array<number>(len).fill(0));
@@ -308,6 +304,9 @@ export default function ScoreProgressChart() {
         name: u,
         type: "line",
         data: full.cum[i],
+        // Stable identity color (not palette order) so lines keep their color
+        // when the roster changes.
+        color: userColor(u),
         // Dots on tiny axes (e.g. single-day dataset): otherwise a lone point
         // is invisible.
         showSymbol: full.dates.length <= 2,
@@ -351,29 +350,32 @@ export default function ScoreProgressChart() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <CardTitle className="text-sm sm:text-base">Score Progress</CardTitle>
           <div className="flex flex-wrap gap-1" role="group" aria-label="Time period">
-            {RANGES.map((r) => (
-              <Button
-                key={r.key}
-                variant={range === r.key ? "default" : "ghost"}
-                size="sm"
-                className="h-7 px-2 text-xs"
-                aria-pressed={range === r.key}
-                disabled={!interactive || (r.days != null && r.days > full.dates.length)}
-                title={
-                  r.days != null && r.days > full.dates.length
-                    ? "Not enough history yet for this range"
-                    : undefined
-                }
-                onClick={() => {
-                  // Always re-apply, even for the active range, so a click snaps
-                  // back from any manual zoom/pan to the labeled window.
-                  setRange(r.key);
-                  setZoomNonce((n) => n + 1);
-                }}
-              >
-                {r.key}
-              </Button>
-            ))}
+            {RANGES.map((r) => {
+              // Disabled buttons never surface their title hint (no hover/focus),
+              // so expose out-of-range buttons as aria-disabled instead: still
+              // announced, still focusable, click is a no-op below.
+              const outOfRange = r.days != null && r.days > full.dates.length;
+              return (
+                <Button
+                  key={r.key}
+                  variant={range === r.key ? "default" : "ghost"}
+                  size="sm"
+                  className="h-7 px-2 text-xs aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
+                  aria-pressed={range === r.key}
+                  aria-disabled={!interactive || outOfRange}
+                  title={outOfRange ? "Not enough history yet for this range" : undefined}
+                  onClick={() => {
+                    if (!interactive || outOfRange) return;
+                    // Always re-apply, even for the active range, so a click snaps
+                    // back from any manual zoom/pan to the labeled window.
+                    setRange(r.key);
+                    setZoomNonce((n) => n + 1);
+                  }}
+                >
+                  {r.key}
+                </Button>
+              );
+            })}
           </div>
         </div>
         <p className="text-[11px] text-muted-foreground pt-1">

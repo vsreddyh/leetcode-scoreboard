@@ -64,6 +64,8 @@ const diffColor: Record<string, string> = {
 export default function ScoreboardDashboard() {
   // IST today string, frozen per mount so a midnight rollover mid-session
   // can't leave the calendar and the progress chart disagreeing by a day.
+  // Tradeoff: after midnight IST this stays on the mount-time date (and "Jump
+  // to today" with it) until refresh — do not "fix" back to a live value.
   const [istToday] = useState(() => todayIST());
 
   const [selected, setSelected] = useState<Date | undefined>(() => parseISO(istToday));
