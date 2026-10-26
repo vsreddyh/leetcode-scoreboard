@@ -101,7 +101,9 @@ export function todayIST(): string {
 /** Fixed season start (IST date bucket). Sync keeps everything on/after this. */
 export const SEASON_START = "2026-09-08";
 
-/** UTC-midnight math for IST YYYY-MM-DD buckets (no DST/time-shift issues). */
+/** UTC-midnight math for IST YYYY-MM-DD buckets (no DST/time-shift issues).
+ * Caller must pass validated keys (see isValidDayKey): garbage in yields
+ * Date.UTC normalization or NaN out. */
 export function parseDayKey(s: string): number {
   const [y, m, d] = s.split("-").map(Number);
   return Date.UTC(y, m - 1, d);

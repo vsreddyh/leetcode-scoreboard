@@ -15,11 +15,12 @@ export interface QuestionRow {
   lang: string;
 }
 
+/** One cumulative-chart point: a user's total for a single IST date bucket.
+ * (No `count` — the chart never renders it, so the history payload skips it.) */
 export interface DailyRow {
   username: string;
   date: string;
   total: number;
-  count: number;
 }
 
 export interface TotalRow {
@@ -73,14 +74,19 @@ export async function getDayDetail(date: string): Promise<QuestionRow[]> {
 
 export async function getActiveDates(): Promise<string[]> {
   await connectDB();
-  const dates: unknown[] = await Submission.distinct("date", { status: "Accepted" });
+  const today = todayIST();
+  // Push the [SEASON_START, today] range into Mongo so malformed/out-of-range
+  // buckets never leave the DB; isValidDayKey still rejects bad shapes.
+  const dates: unknown[] = await Submission.distinct("date", {
+    status: "Accepted",
+    date: { $gte: SEASON_START, $lte: today },
+  });
   // Keep the calendar consistent with the chart axis, which folds everything
   // outside [SEASON_START, today] into the edge buckets — and drop malformed
   // buckets the chart would reject, so no highlighted day lacks a chart point.
   // Filter before sort so malformed buckets never enter the ordering.
-  const today = todayIST();
   return (dates as string[])
-    .filter((d) => typeof d === "string" && isValidDayKey(d) && d >= SEASON_START && d <= today)
+    .filter((d) => typeof d === "string" && isValidDayKey(d))
     .sort();
 }
 
@@ -135,7 +141,6 @@ export async function getScoreHistory(): Promise<DailyRow[]> {
       $group: {
         _id: { date: "$date", username: "$_id.username" },
         total: { $sum: "$score" },
-        count: { $sum: 1 },
       },
     },
     { $sort: { "_id.date": 1 } },
@@ -144,7 +149,6 @@ export async function getScoreHistory(): Promise<DailyRow[]> {
     username: r._id.username as string,
     date: r._id.date as string,
     total: Math.round((r.total as number) * 100) / 100,
-    count: r.count as number,
   }));
 }
 

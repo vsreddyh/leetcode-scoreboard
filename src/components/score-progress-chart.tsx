@@ -344,12 +344,14 @@ export default function ScoreProgressChart({ today }: { today: string }) {
         lineStyle: { width: 2 },
       })),
     };
-    chart.setOption(option, {
-      // Full component replace only when the window or data changed; theme-only
-      // updates plain-merge so dataZoom keeps its manual zoom (colors refresh,
-      // start/end persist when omitted).
-      replaceMerge: resetWindow ? ["series", "xAxis", "dataZoom"] : ["series", "xAxis"],
-    });
+    if (resetWindow) {
+      chart.setOption(option, { replaceMerge: ["series", "xAxis", "dataZoom"] });
+    } else {
+      // Theme-only updates plain-merge: series colors are theme-independent, so
+      // re-setting them would just dispose and re-animate every line, and the
+      // manual dataZoom window survives (start/end persist when omitted).
+      chart.setOption(option);
+    }
   }, [full, range, zoomNonce, resolvedTheme]);
 
   if (loading) {
