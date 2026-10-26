@@ -18,7 +18,8 @@ const SubmissionSchema = new Schema(
 );
 
 SubmissionSchema.index({ username: 1, titleSlug: 1 }, { unique: true });
-// Covers the status+date filtered aggregations in lib/scores.ts.
+// Covers the status+date match in lib/scores.ts (the {date,score,_id} ordering
+// stays an in-memory sort after the match).
 SubmissionSchema.index({ status: 1, date: 1 });
 
 export const Submission =

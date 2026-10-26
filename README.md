@@ -5,7 +5,7 @@ Next.js + MongoDB scoreboard. **Score per Accepted problem = 100 − acceptance 
 ## Architecture
 
 - **Sync (write, every 5 min):** cron-job.org → `GET /api/sync` → LeetCode GraphQL (`recentSubmissionList` + `question.acRate`) → upsert into Mongo `submissions`. No UI involved. No Vercel crons.
-- **Dashboard (read, public):** `/dashboard` → `GET /api/scores` → Mongo aggregation only. Never calls LeetCode.
+- **Dashboard (read, public):** `/` → `GET /api/overall`, `GET /api/day/[date]`, `GET /api/history` → Mongo aggregation only. Never calls LeetCode.
 - **Admin (protected):** `/admin` (password cookie) → manage tracked users, manual sync, view raw submissions.
 
 ## Routes

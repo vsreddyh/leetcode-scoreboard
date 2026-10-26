@@ -90,7 +90,7 @@ function formatDay(ms: number): string {
 
 /** Round to cents for display (tooltip + axis share this so they never disagree). */
 function cents(v: number): string {
-  return String(Math.round(v * 100) / 100);
+  return (Math.round(v * 100) / 100).toFixed(2);
 }
 
 export default function ScoreProgressChart() {
@@ -118,7 +118,10 @@ export default function ScoreProgressChart() {
         const res = await fetch("/api/history", { cache: "no-store" });
         if (!res.ok) throw new Error(`history ${res.status}`);
         const data = await res.json();
-        if (!cancelled) setHistory(Array.isArray(data.history) ? data.history : []);
+        if (!cancelled) {
+          setHistory(Array.isArray(data.history) ? data.history : []);
+          setFetchError(false);
+        }
       } catch {
         if (!cancelled) {
           setHistory([]);
@@ -159,9 +162,12 @@ export default function ScoreProgressChart() {
       if (r.date < earliest) earliest = r.date;
       if (r.date > endStr) endStr = r.date;
     }
-    // One ancient/typo bucket must not materialize a thousand-year axis: sync
-    // keeps everything on/after season start, so clamp there.
+    // Bound both ends so one ancient/typo bucket can't materialize a huge axis:
+    // sync keeps everything on/after SEASON_START, and out-of-range rows below
+    // are folded into the edge buckets (never dropped) so cum still matches
+    // the leaderboard exactly.
     if (earliest < SEASON_START) earliest = SEASON_START;
+    if (endStr > todayStr) endStr = todayStr;
     const endMs = parseDay(endStr);
     const startMs = parseDay(earliest);
     const len = Math.max(1, Math.round((endMs - startMs) / 86400000) + 1);
@@ -172,7 +178,10 @@ export default function ScoreProgressChart() {
     const cum: number[][] = users.map(() => new Array<number>(len).fill(0));
     for (const r of rows) {
       const u = uIdx.get(r.username);
-      const d = idx.get(r.date);
+      // Fold out-of-range rows into the edge buckets (clamped above) so no
+      // points are ever silently dropped from the cumulative totals.
+      const dd = r.date < SEASON_START ? SEASON_START : r.date > todayStr ? todayStr : r.date;
+      const d = idx.get(dd);
       if (u !== undefined && d !== undefined) cum[u][d] += r.total;
     }
     for (let u = 0; u < users.length; u++) {
@@ -248,7 +257,9 @@ export default function ScoreProgressChart() {
       },
       yAxis: {
         type: "value",
-        scale: true,
+        // Anchor at zero: this is a cumulative chart, and a floating min would
+        // exaggerate small gaps between lines.
+        scale: false,
         splitNumber: 4,
         axisLabel: {
           color: axisColor,
