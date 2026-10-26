@@ -50,8 +50,15 @@ export async function getDayDetail(date: string): Promise<QuestionRow[]> {
     seen.add(key);
     rows.push(d);
   }
-  // Display order: highest score first (previous behavior).
-  rows.sort((a, b) => ((b as { score: number }).score ?? 0) - ((a as { score: number }).score ?? 0));
+  // Display order: highest score first (previous behavior). Number() keeps the
+  // order deterministic even if a legacy doc carried a non-numeric score.
+  const num = (v: unknown) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+  rows.sort(
+    (a, b) => num((b as { score?: unknown }).score) - num((a as { score?: unknown }).score)
+  );
   return rows.map((d) => ({
     username: (d as { username: string }).username,
     title: (d as { title: string }).title ?? "",

@@ -355,7 +355,8 @@ export default function ScoreProgressChart() {
             {RANGES.map((r) => {
               // Disabled buttons never surface their title hint (no hover/focus),
               // so expose out-of-range buttons as aria-disabled instead: still
-              // announced, still focusable, click is a no-op below.
+              // announced, still focusable; clicks no-op except re-applying the
+              // active range.
               const outOfRange = r.days != null && r.days > full.dates.length;
               return (
                 <Button
@@ -367,7 +368,9 @@ export default function ScoreProgressChart() {
                   aria-disabled={!interactive || outOfRange}
                   title={outOfRange ? "Not enough history yet for this range" : undefined}
                   onClick={() => {
-                    if (!interactive || outOfRange) return;
+                    // Out-of-range clicks are no-ops — except on the ACTIVE range,
+                    // which always re-applies (its window is just the full axis).
+                    if (!interactive || (outOfRange && range !== r.key)) return;
                     // Always re-apply, even for the active range, so a click snaps
                     // back from any manual zoom/pan to the labeled window.
                     setRange(r.key);

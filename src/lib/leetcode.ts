@@ -124,14 +124,16 @@ export function isValidDayKey(s: string): boolean {
   return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d;
 }
 
-/** Format any instant as its IST YYYY-MM-DD bucket (same rules as dayKey/todayIST). */
-export function formatISTDay(d: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Kolkata",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(d);
+/** Format a calendar cell Date as a YYYY-MM-DD bucket from its LOCAL calendar
+ * components (not via an IST-formatted instant). A clicked cell must resolve to
+ * the date shown on the cell in every viewer TZ: round-tripping a local-midnight
+ * Date through IST formatting breaks east of IST (JST midnight is still the
+ * previous day in IST), while local components are exactly the cell label. */
+export function formatLocalDayKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 /** Parse an IST YYYY-MM-DD bucket to a local-midnight Date for calendar display,

@@ -19,7 +19,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { NotifyToggle } from "@/components/notify-toggle";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { todayIST, formatISTDay, parseISTDayBucket } from "@/lib/leetcode";
+import { todayIST, formatLocalDayKey, parseISTDayBucket } from "@/lib/leetcode";
 
 const ScoreProgressChart = dynamic(() => import("@/components/score-progress-chart"), {
   ssr: false,
@@ -122,7 +122,7 @@ export default function ScoreboardDashboard() {
 
   function onDayClick(day: Date) {
     setSelected(day);
-    const ds = formatISTDay(day);
+    const ds = formatLocalDayKey(day);
     // The [dateStr] effect below owns fetching; no direct fetch here so two
     // concurrent requests can't race.
     setDateStr(ds);
