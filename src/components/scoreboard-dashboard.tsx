@@ -145,16 +145,16 @@ export default function ScoreboardDashboard() {
     return acc;
   }, {});
 
-  // Day totals per user for selected date (finite-guarded like the server sort:
-  // one string-typed legacy score must not turn the accumulator into concat).
+  // Day totals per user for selected date (raw sums, finite-guarded so one
+  // string-typed legacy score can't turn the accumulator into concat;
+  // fmtScore rounds once at render — same single-rounding rule as chart cum).
   const dayTotals = Object.entries(byUser).map(([user, qs]) => ({
     user,
     count: qs.length,
-    total:
-      Math.round(
-        qs.reduce((s, q) => s + (typeof q.score === "number" && Number.isFinite(q.score) ? q.score : 0), 0) *
-          100
-      ) / 100,
+    total: qs.reduce(
+      (s, q) => s + (typeof q.score === "number" && Number.isFinite(q.score) ? q.score : 0),
+      0
+    ),
   }));
 
   // Days with data for calendar highlighting (memoized: new Date[] identity

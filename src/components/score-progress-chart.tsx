@@ -120,8 +120,10 @@ export default function ScoreProgressChart({ today }: { today: string }) {
           setFetchError(false);
         }
       } catch {
+        // Preserve existing history: a failed refetch after a good first paint
+        // must not blank a healthy chart. First-load failure starts from [],
+        // so nothing stale can linger there.
         if (!cancelled) {
-          setHistory([]);
           setFetchError(true);
         }
       } finally {

@@ -51,12 +51,11 @@ export async function getDayDetail(date: string): Promise<QuestionRow[]> {
     seen.add(key);
     rows.push(d);
   }
-  // Display order: highest score first (previous behavior). Number() keeps the
-  // order deterministic even if a legacy doc carried a non-numeric score.
-  const num = (v: unknown) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : 0;
-  };
+  // Display order: highest score first (previous behavior). Strict finite-number
+  // guard (not coercion): legacy non-numeric scores count as 0 everywhere, so
+  // the detail view agrees with the $sum pipelines, which ignore non-numerics.
+  // Untriggerable via scoreFor (always a number); structural only.
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
   rows.sort(
     (a, b) => num((b as { score?: unknown }).score) - num((a as { score?: unknown }).score)
   );
@@ -93,7 +92,9 @@ export async function getActiveDates(): Promise<string[]> {
 export async function getOverallScores(): Promise<TotalRow[]> {
   await connectDB();
   const totals = await Submission.aggregate([
-    { $match: { status: "Accepted" } },
+    // Non-numeric scores are ignored by $sum, matching the strict JS guards in
+    // getDayDetail and the chart filter (all untriggerable via scoreFor).
+    { $match: { status: "Accepted", score: { $type: "number" } } },
     // Deterministic $first: earliest solve wins, ties by highest score, then _id.
     // Same order as every other read path so same-date duplicates always agree.
     { $sort: { date: 1, score: -1, _id: 1 } },
@@ -114,7 +115,8 @@ export async function getOverallScores(): Promise<TotalRow[]> {
   ]);
   return totals.map((t) => ({
     username: t._id as string,
-    total: Math.round(t.total * 100) / 100,
+    // Raw total: display rounds once via fmtScore (tables + push text).
+    total: t.total as number,
     count: t.count as number,
   }));
 }
@@ -175,7 +177,7 @@ export async function getScoreHistory(): Promise<DailyRow[]> {
 export async function getDayScores(date: string): Promise<TotalRow[]> {
   await connectDB();
   const totals = await Submission.aggregate([
-    { $match: { status: "Accepted", date } },
+    { $match: { status: "Accepted", date, score: { $type: "number" } } },
     // Same deterministic order as getOverallScores/getScoreHistory.
     { $sort: { date: 1, score: -1, _id: 1 } },
     {
@@ -195,7 +197,8 @@ export async function getDayScores(date: string): Promise<TotalRow[]> {
   ]);
   return totals.map((t) => ({
     username: t._id as string,
-    total: Math.round(t.total * 100) / 100,
+    // Raw total: display rounds once via fmtScore (tables + push text).
+    total: t.total as number,
     count: t.count as number,
   }));
 }

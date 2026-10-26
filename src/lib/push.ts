@@ -95,11 +95,11 @@ export async function notifyAfterSync(synced: Record<string, number>) {
     let todayLeader = "";
     try {
       const { getDayScores } = await import("@/lib/scores");
-      const { todayIST } = await import("@/lib/leetcode");
+      const { todayIST, fmtScore } = await import("@/lib/leetcode");
       const totals = await getDayScores(todayIST());
       todayPts = new Map(totals.map((t) => [t.username, t.total]));
       const leader = totals[0];
-      if (leader) todayLeader = ` • Today's leader: ${leader.username} (${leader.total} pts)`;
+      if (leader) todayLeader = ` • Today's leader: ${leader.username} (${fmtScore(leader.total)} pts)`;
     } catch {
       /* today points are best-effort; notification still goes out without them */
     }
@@ -109,7 +109,7 @@ export async function notifyAfterSync(synced: Record<string, number>) {
       if (count > 0) {
         const pts = todayPts.get(user);
         summaryParts.push(
-          pts != null ? `${user} +${count} (today ${pts} pts)` : `${user} +${count}`
+          pts != null ? `${user} +${count} (today ${fmtScore(pts)} pts)` : `${user} +${count}`
         );
       }
     }

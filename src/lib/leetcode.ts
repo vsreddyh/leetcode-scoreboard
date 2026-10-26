@@ -103,7 +103,8 @@ export const SEASON_START = "2026-09-08";
 
 /** UTC-midnight math for IST YYYY-MM-DD buckets (no DST/time-shift issues).
  * Caller must pass validated keys (see isValidDayKey): garbage in yields
- * Date.UTC normalization or NaN out. */
+ * Date.UTC normalization or NaN out. Returns epoch ms — see parseDayBucket
+ * for the local-midnight Date variant used by the calendar. */
 export function parseDayKey(s: string): number {
   const [y, m, d] = s.split("-").map(Number);
   return Date.UTC(y, m - 1, d);
@@ -151,7 +152,8 @@ export function formatLocalDayKey(d: Date): string {
 /** Parse a YYYY-MM-DD bucket to a local-midnight Date for calendar display, so
  * the calendar highlights the right day regardless of viewer TZ. TZ-agnostic
  * by design (exact inverse of formatLocalDayKey) — not IST-specific despite
- * operating on IST buckets.
+ * operating on IST buckets. Counterpart: parseDayKey returns epoch ms for the
+ * same bucket (axis math); don't swap them.
  * Caller must pass validated keys (see isValidDayKey) — like `new Date(y,m,d)`,
  * this normalizes out-of-range components instead of returning Invalid Date.
  * All current callers feed pre-validated keys (`istToday`, filtered `activeDates`). */
