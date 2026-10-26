@@ -107,6 +107,10 @@ export default function ScoreProgressChart({ today }: { today: string }) {
   // Last applied dataset identity. A new model object means fresh data, which
   // needs a full component replace (series list may differ) plus the window.
   const prevFullRef = useRef<ProgressModel | null>(null);
+  // Last applied payload identity. An identical refetch must not install a new
+  // array (which would rebuild `full`, dispose the chart, and reset a manual
+  // zoom for zero new information).
+  const prevRawRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -116,7 +120,12 @@ export default function ScoreProgressChart({ today }: { today: string }) {
         if (!res.ok) throw new Error(`history ${res.status}`);
         const data = await res.json();
         if (!cancelled) {
-          setHistory(Array.isArray(data.history) ? data.history : []);
+          const rows = Array.isArray(data.history) ? data.history : [];
+          const raw = JSON.stringify(rows);
+          if (raw !== prevRawRef.current) {
+            prevRawRef.current = raw;
+            setHistory(rows);
+          }
           setFetchError(false);
         }
       } catch {
@@ -243,25 +252,28 @@ export default function ScoreProgressChart({ today }: { today: string }) {
     prevFullRef.current = full;
     const resetWindow = rangeChanged || dataChanged;
 
-    const series = full.users.map((u, i) => ({
-      name: u,
-      type: "line",
-      data: full.cum[i],
-      // Stable identity color (not palette order) so lines keep their color
-      // when the roster changes.
-      color: userColor(u),
-      // Dots on tiny axes (e.g. single-day dataset): otherwise a lone point
-      // is invisible.
-      showSymbol: full.dates.length <= 2,
-      // Cumulative totals are step functions — no smoothing, or the curve
-      // implies intermediate values that never existed.
-      smooth: false,
-      // Only downsample (Largest-Triangle-Three-Buckets) once the axis exceeds
-      // a full season (~366 days); smaller windows render every point exactly.
-      ...(full.dates.length > 366 ? { sampling: "lttb" as const } : {}),
-      emphasis: { focus: "series" },
-      lineStyle: { width: 2 },
-    }));
+    // Built lazily inside the reset branch below: theme-only updates never
+    // need it, so don't waste the per-user map on a toggle.
+    const buildSeries = () =>
+      full.users.map((u, i) => ({
+        name: u,
+        type: "line",
+        data: full.cum[i],
+        // Stable identity color (not palette order) so lines keep their color
+        // when the roster changes.
+        color: userColor(u),
+        // Dots on tiny axes (e.g. single-day dataset): otherwise a lone point
+        // is invisible.
+        showSymbol: full.dates.length <= 2,
+        // Cumulative totals are step functions — no smoothing, or the curve
+        // implies intermediate values that never existed.
+        smooth: false,
+        // Only downsample (Largest-Triangle-Three-Buckets) once the axis exceeds
+        // a full season (~366 days); smaller windows render every point exactly.
+        ...(full.dates.length > 366 ? { sampling: "lttb" as const } : {}),
+        emphasis: { focus: "series" },
+        lineStyle: { width: 2 },
+      }));
 
     const option: ECOption = {
       // No top-level palette: every series sets its stable userColor, so a
@@ -349,7 +361,7 @@ export default function ScoreProgressChart({ today }: { today: string }) {
       ],
     };
     if (resetWindow) {
-      chart.setOption({ ...option, series }, { replaceMerge: ["series", "xAxis", "dataZoom"] });
+      chart.setOption({ ...option, series: buildSeries() }, { replaceMerge: ["series", "xAxis", "dataZoom"] });
     } else {
       // Theme-only: styling-only setOption with no series — lines neither
       // dispose nor re-animate. Plain merge keeps the manual dataZoom window

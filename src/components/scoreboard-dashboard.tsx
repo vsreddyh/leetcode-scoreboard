@@ -183,9 +183,10 @@ export default function ScoreboardDashboard() {
   // Days with data for calendar highlighting (memoized: new Date[] identity
   // every render would make Calendar re-resolve modifiers each time).
   // isValidDayKey mirrors the server filter so a future server regression
-  // can't feed the calendar an unparseable bucket.
+  // can't feed the calendar an unparseable bucket. The explicit typeof keeps
+  // the invariant structural instead of relying on RegExp coercion order.
   const dataDays = useMemo(
-    () => activeDates.filter(isValidDayKey).map((d) => parseDayBucketDate(d)),
+    () => activeDates.filter((d) => typeof d === "string" && isValidDayKey(d)).map((d) => parseDayBucketDate(d)),
     [activeDates]
   );
   // IST-primary by design: the whole board is IST-bucketed (header "Today",
