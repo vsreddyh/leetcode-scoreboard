@@ -14,3 +14,9 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Reviewer is Muse Spark 1.3 Contributor via the official OpenCode GitHub action (`anomalyco/opencode/github@latest`, model `opencode-go/muse-spark-1.3-contributor`, per https://opencode.ai/docs/github/ Pull Request Example). Trigger is `pull_request` only: no `/oc` comment commands, no issue triage, no schedules. Review-only: `contents:read` so it cannot push code; it posts findings as PR comments.
 - Fork PRs have no `OPENCODE_API_KEY` secret, so the job skips instead of failing. Requires `OPENCODE_API_KEY` repo secret (same as Discord-bots).
 - The reviewer reads back scratch files it stages in `/tmp`. Repo-root `opencode.json` grants `/tmp/*` (the CLI's matcher turns `*` into `.*`, so that covers nested temp dirs too); do not delete it as dead config (Discord-bots #319).
+
+## Build policy (CI only — never build locally)
+
+- NEVER run `npm run build` (or any production build / type-check gate) on this machine. No `next build`, no `tsc --noEmit` as a gate, no Vercel CLI deploys from here.
+- All verification runs in CI: `ci.yml` (`npm ci` + `npm run lint` + `npm run build`) executes on every PR and every `main` push, plus Vercel Preview on PRs. A PR merges only when CI is green AND the reviewer has no non-negligible findings.
+- Local iteration uses `npm run dev` only (and reading code). If CI fails, fix and push — do not reproduce with a local build.

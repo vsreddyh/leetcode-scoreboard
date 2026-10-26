@@ -15,7 +15,7 @@ import {
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import { useTheme } from "next-themes";
-import { SEASON_START, isValidDayKey, parseDayKey, formatDayKey } from "@/lib/leetcode";
+import { SEASON_START, isValidDayKey, parseDayKey, formatDayKey, fmtScore } from "@/lib/leetcode";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -74,12 +74,6 @@ const PALETTE = [
   "#a16207",
   "#0369a1",
 ];
-
-/** Round to cents for display (tooltip + axis share this so they never disagree). */
-function fmtScore(v: number): string {
-  // + 0 normalizes -0 so totals never render as "-0.00".
-  return (Math.round(v * 100) / 100 + 0).toFixed(2);
-}
 
 /** Stable per-user color: the roster is alphabetical, so series-index colors
  * would re-seat every line after an insertion point when users join/leave. */
@@ -417,7 +411,7 @@ export default function ScoreProgressChart({ today }: { today: string }) {
             })}
           </div>
         </div>
-        <p className="text-[11px] text-muted-foreground pt-1">
+        <p className="text-[11px] text-muted-foreground pt-1 line-clamp-1">
           Cumulative totals • pinch or slider to zoom • drag to pan • re-click a range to
           reset
         </p>

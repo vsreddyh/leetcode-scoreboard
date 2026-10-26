@@ -19,7 +19,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { NotifyToggle } from "@/components/notify-toggle";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { todayIST, formatLocalDayKey, parseISTDayBucket } from "@/lib/leetcode";
+import { todayIST, formatLocalDayKey, parseDayBucket, fmtScore } from "@/lib/leetcode";
 
 const ScoreProgressChart = dynamic(() => import("@/components/score-progress-chart"), {
   ssr: false,
@@ -74,10 +74,10 @@ export default function ScoreboardDashboard() {
   // to today" with it) until refresh — do not "fix" back to a live value.
   const [istToday] = useState(() => todayIST());
 
-  const [selected, setSelected] = useState<Date | undefined>(() => parseISTDayBucket(istToday));
+  const [selected, setSelected] = useState<Date | undefined>(() => parseDayBucket(istToday));
   // Controlled calendar month so "Jump to today" scrolls into view even after
   // the user paged elsewhere.
-  const [month, setMonth] = useState<Date>(() => parseISTDayBucket(istToday));
+  const [month, setMonth] = useState<Date>(() => parseDayBucket(istToday));
   const [dateStr, setDateStr] = useState(() => istToday);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [totals, setTotals] = useState<Total[]>([]);
@@ -160,10 +160,10 @@ export default function ScoreboardDashboard() {
   // Days with data for calendar highlighting (memoized: new Date[] identity
   // every render would make Calendar re-resolve modifiers each time).
   const dataDays = useMemo(
-    () => activeDates.map((d) => parseISTDayBucket(d)),
+    () => activeDates.map((d) => parseDayBucket(d)),
     [activeDates]
   );
-  const todayMarker = useMemo(() => parseISTDayBucket(istToday), [istToday]);
+  const todayMarker = useMemo(() => parseDayBucket(istToday), [istToday]);
 
   return (
     <div className="flex-1 w-full max-w-5xl mx-auto px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
@@ -227,7 +227,7 @@ export default function ScoreboardDashboard() {
               {dateStr === istToday ? "Today" : dateStr}
             </h2>
             {dateStr !== istToday && (
-              <Button variant="ghost" size="sm" onClick={() => onDayClick(parseISTDayBucket(istToday))}>
+              <Button variant="ghost" size="sm" onClick={() => onDayClick(parseDayBucket(istToday))}>
                 Jump to today
               </Button>
             )}
@@ -243,7 +243,7 @@ export default function ScoreboardDashboard() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
-                    <p className="text-lg sm:text-2xl font-bold tabular-nums">{dt.total}</p>
+                    <p className="text-lg sm:text-2xl font-bold tabular-nums">{fmtScore(dt.total)}</p>
                     <p className="text-[11px] sm:text-xs text-muted-foreground">
                       {dt.count} problem{dt.count === 1 ? "" : "s"}
                     </p>
@@ -317,7 +317,7 @@ export default function ScoreboardDashboard() {
                               {q.acRate != null ? `${q.acRate.toFixed(1)}%` : "—"}
                             </TableCell>
                             <TableCell className="text-right font-semibold tabular-nums">
-                              {q.score}
+                              {fmtScore(q.score)}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -337,7 +337,7 @@ export default function ScoreboardDashboard() {
                             {q.username}
                           </span>
                           <span className="text-sm font-bold tabular-nums shrink-0">
-                            {q.score} pts
+                            {fmtScore(q.score)} pts
                           </span>
                         </div>
                         <a
@@ -402,7 +402,7 @@ export default function ScoreboardDashboard() {
                             {t.username}
                           </TableCell>
                           <TableCell className="text-right font-semibold tabular-nums whitespace-nowrap">
-                            {t.total}
+                            {fmtScore(t.total)}
                           </TableCell>
                           <TableCell className="text-right text-muted-foreground tabular-nums">
                             {t.count}

@@ -117,11 +117,21 @@ export function formatDayKey(ms: number): string {
   return `${y}-${m}-${day}`;
 }
 
-/** True for real IST calendar buckets: shape check + round-trip guard, since
- * Date.UTC normalizes overflow (2026-13-99 rolls into 2027 instead of NaN). */
+/** Round a score to cents for display. Shared by tables and the chart tooltip
+ * so every surface renders the same string ("88.40", never "88.4" vs "88.40").
+ * The + 0 normalizes -0 so totals never render as "-0.00". */
+export function fmtScore(v: number): string {
+  return (Math.round(v * 100) / 100 + 0).toFixed(2);
+}
+
+/** True for real IST calendar buckets: shape check, explicit year range (Date.UTC
+ * maps years 0-99 to 19xx, so the round-trip below would reject them for the
+ * wrong reason), and round-trip guard, since Date.UTC normalizes overflow
+ * (2026-13-99 rolls into 2027 instead of NaN). */
 export function isValidDayKey(s: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
   const [y, m, d] = s.split("-").map(Number);
+  if (y < 100) return false;
   const t = new Date(Date.UTC(y, m - 1, d));
   return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d;
 }
@@ -138,11 +148,13 @@ export function formatLocalDayKey(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-/** Parse an IST YYYY-MM-DD bucket to a local-midnight Date for calendar display,
- * so the calendar highlights the right day regardless of viewer TZ.
+/** Parse a YYYY-MM-DD bucket to a local-midnight Date for calendar display, so
+ * the calendar highlights the right day regardless of viewer TZ. TZ-agnostic
+ * by design (exact inverse of formatLocalDayKey) — not IST-specific despite
+ * operating on IST buckets.
  * Caller must pass validated keys (see isValidDayKey) — like `new Date(y,m,d)`,
  * this normalizes out-of-range components instead of returning Invalid Date. */
-export function parseISTDayBucket(s: string): Date {
+export function parseDayBucket(s: string): Date {
   const [y, m, d] = s.split("-").map(Number);
   return new Date(y, m - 1, d);
 }
