@@ -124,6 +124,23 @@ export function isValidDayKey(s: string): boolean {
   return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d;
 }
 
+/** Format any instant as its IST YYYY-MM-DD bucket (same rules as dayKey/todayIST). */
+export function formatISTDay(d: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
+/** Parse an IST YYYY-MM-DD bucket to a local-midnight Date for calendar display,
+ * so the calendar highlights the right day regardless of viewer TZ. */
+export function parseISTDayBucket(s: string): Date {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
 /** Current IST wall-clock minutes since midnight. */
 export function istMinutesNow(): number {
   const now = new Date();

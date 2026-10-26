@@ -226,11 +226,13 @@ export default function ScoreProgressChart() {
     })();
 
     const option: ECOption = {
-      color: PALETTE,
+      // No top-level palette: every series sets its stable userColor, so a
+      // global here would be dead config to keep in sync.
       backgroundColor: "transparent",
       animationDuration: 300,
       tooltip: {
         trigger: "axis",
+        confine: true,
         axisPointer: { type: "line" },
         backgroundColor: dark ? "#09090b" : "#ffffff",
         borderColor: dark ? "#27272a" : "#e4e4e7",

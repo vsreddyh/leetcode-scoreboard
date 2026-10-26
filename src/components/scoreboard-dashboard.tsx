@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { format, parseISO } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +19,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { NotifyToggle } from "@/components/notify-toggle";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { todayIST } from "@/lib/leetcode";
+import { todayIST, formatISTDay, parseISTDayBucket } from "@/lib/leetcode";
 
 const ScoreProgressChart = dynamic(() => import("@/components/score-progress-chart"), {
   ssr: false,
@@ -68,7 +67,7 @@ export default function ScoreboardDashboard() {
   // to today" with it) until refresh — do not "fix" back to a live value.
   const [istToday] = useState(() => todayIST());
 
-  const [selected, setSelected] = useState<Date | undefined>(() => parseISO(istToday));
+  const [selected, setSelected] = useState<Date | undefined>(() => parseISTDayBucket(istToday));
   const [dateStr, setDateStr] = useState(() => istToday);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [totals, setTotals] = useState<Total[]>([]);
@@ -88,7 +87,7 @@ export default function ScoreboardDashboard() {
           setTotals(Array.isArray(data.totals) ? data.totals : []);
           setActiveDates(Array.isArray(data.activeDates) ? data.activeDates : []);
         }
-        } catch (err) {
+      } catch (err) {
         console.error(`[dashboard] overall fetch failed: ${err instanceof Error ? err.message : String(err)}`);
       } finally {
         if (!cancelled) setLoading(false);
@@ -123,7 +122,7 @@ export default function ScoreboardDashboard() {
 
   function onDayClick(day: Date) {
     setSelected(day);
-    const ds = format(day, "yyyy-MM-dd");
+    const ds = formatISTDay(day);
     // The [dateStr] effect below owns fetching; no direct fetch here so two
     // concurrent requests can't race.
     setDateStr(ds);
@@ -143,7 +142,7 @@ export default function ScoreboardDashboard() {
   }));
 
   // Days with data for calendar highlighting
-  const dataDays = activeDates.map((d) => parseISO(d));
+  const dataDays = activeDates.map((d) => parseISTDayBucket(d));
 
   return (
     <div className="flex-1 w-full max-w-5xl mx-auto px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
@@ -185,7 +184,7 @@ export default function ScoreboardDashboard() {
                   className="rounded-md max-w-full"
                   modifiers={{
                     hasData: dataDays,
-                    today: parseISO(istToday),
+                    today: parseISTDayBucket(istToday),
                   }}
                   modifiersClassNames={{
                     hasData:
@@ -206,7 +205,7 @@ export default function ScoreboardDashboard() {
               {dateStr === istToday ? "Today" : dateStr}
             </h2>
             {dateStr !== istToday && (
-              <Button variant="ghost" size="sm" onClick={() => onDayClick(parseISO(istToday))}>
+              <Button variant="ghost" size="sm" onClick={() => onDayClick(parseISTDayBucket(istToday))}>
                 Jump to today
               </Button>
             )}

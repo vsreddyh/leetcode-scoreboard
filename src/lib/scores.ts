@@ -66,14 +66,15 @@ export async function getDayDetail(date: string): Promise<QuestionRow[]> {
 
 export async function getActiveDates(): Promise<string[]> {
   await connectDB();
-  const dates = (await Submission.distinct("date", { status: "Accepted" })) as string[];
+  const dates: unknown[] = await Submission.distinct("date", { status: "Accepted" });
   // Keep the calendar consistent with the chart axis, which folds everything
   // outside [SEASON_START, today] into the edge buckets — and drop malformed
   // buckets the chart would reject, so no highlighted day lacks a chart point.
+  // Filter before sort so malformed buckets never enter the ordering.
   const today = todayIST();
-  return dates
-    .sort()
-    .filter((d) => isValidDayKey(d) && d >= SEASON_START && d <= today);
+  return (dates as string[])
+    .filter((d) => typeof d === "string" && isValidDayKey(d) && d >= SEASON_START && d <= today)
+    .sort();
 }
 
 export async function getOverallScores(): Promise<TotalRow[]> {
