@@ -1,0 +1,289 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import * as echarts from "echarts/core";
+import { LineChart, type LineSeriesOption } from "echarts/charts";
+import {
+  GridComponent,
+  TooltipComponent,
+  LegendComponent,
+  DataZoomComponent,
+  type GridComponentOption,
+  type TooltipComponentOption,
+  type LegendComponentOption,
+  type DataZoomComponentOption,
+} from "echarts/components";
+import { CanvasRenderer } from "echarts/renderers";
+import { useTheme } from "next-themes";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+
+echarts.use([
+  LineChart,
+  GridComponent,
+  TooltipComponent,
+  LegendComponent,
+  DataZoomComponent,
+  CanvasRenderer,
+]);
+
+type ECOption = echarts.ComposeOption<
+  | LineSeriesOption
+  | GridComponentOption
+  | TooltipComponentOption
+  | LegendComponentOption
+  | DataZoomComponentOption
+>;
+
+interface HistoryRow {
+  username: string;
+  date: string;
+  total: number;
+  count: number;
+}
+
+type RangeKey = "1D" | "1W" | "1M" | "6M" | "1Y" | "ALL";
+
+const RANGES: { key: RangeKey; days: number | null }[] = [
+  { key: "1D", days: 1 },
+  { key: "1W", days: 7 },
+  { key: "1M", days: 30 },
+  { key: "6M", days: 182 },
+  { key: "1Y", days: 365 },
+  { key: "ALL", days: null },
+];
+
+const PALETTE = [
+  "#2563eb",
+  "#dc2626",
+  "#059669",
+  "#d97706",
+  "#7c3aed",
+  "#db2777",
+  "#0891b2",
+  "#65a30d",
+];
+
+function istToday(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+function parseDay(s: string): number {
+  const [y, m, d] = s.split("-").map(Number);
+  return Date.UTC(y, m - 1, d);
+}
+
+function formatDay(ms: number): string {
+  const d = new Date(ms);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+export default function ScoreProgressChart() {
+  // Fixed "today" per mount so the date axis never shifts mid-session.
+  const [todayStr] = useState(istToday);
+  const [history, setHistory] = useState<HistoryRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [range, setRange] = useState<RangeKey>("1M");
+  const { resolvedTheme } = useTheme();
+  const elRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<echarts.ECharts | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/history");
+        const data = await res.json();
+        if (!cancelled) setHistory(data.history ?? []);
+      } catch {
+        if (!cancelled) setHistory([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /**
+   * Full-resolution model in a single pass: calendar date axis
+   * (earliest solve → today) + cumulative totals per user.
+   */
+  const full = useMemo(() => {
+    const users = [...new Set(history.map((r) => r.username))].sort();
+    const endMs = parseDay(todayStr);
+    let earliest = todayStr;
+    for (const r of history) {
+      if (r.date < earliest) earliest = r.date;
+    }
+    const startMs = parseDay(earliest);
+    const len = Math.max(1, Math.round((endMs - startMs) / 86400000) + 1);
+    const dates = new Array<string>(len);
+    for (let i = 0; i < len; i++) dates[i] = formatDay(startMs + i * 86400000);
+
+    const idx = new Map<string, number>(dates.map((d, i) => [d, i]));
+    const cum: number[][] = users.map(() => new Array<number>(len).fill(0));
+    for (const r of history) {
+      const u = users.indexOf(r.username);
+      const d = idx.get(r.date);
+      if (u >= 0 && d !== undefined) cum[u][d] += r.total;
+    }
+    for (let u = 0; u < users.length; u++) {
+      const a = cum[u];
+      for (let i = 1; i < len; i++) a[i] += a[i - 1];
+      for (let i = 0; i < len; i++) a[i] = Math.round(a[i] * 100) / 100;
+    }
+    return { users, dates, cum };
+  }, [history, todayStr]);
+
+  // Chart instance lifecycle: init once, resize with container, dispose on unmount.
+  useEffect(() => {
+    const el = elRef.current;
+    if (!el || loading || full.users.length === 0) return;
+    const chart = echarts.init(el, null, { renderer: "canvas" });
+    chartRef.current = chart;
+    const ro = new ResizeObserver(() => chart.resize());
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      chart.dispose();
+      chartRef.current = null;
+    };
+  }, [loading, full.users.length]);
+
+  // Data + range + theme → chart option. ECharts owns zoom/pan state internally.
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || full.users.length === 0) return;
+    const dark = resolvedTheme === "dark";
+    const axisColor = dark ? "#a1a1aa" : "#71717a";
+    const splitColor = dark ? "#27272a" : "#e4e4e7";
+    const last = full.dates.length - 1;
+    const days = RANGES.find((r) => r.key === range)?.days ?? null;
+
+    const option: ECOption = {
+      color: PALETTE,
+      backgroundColor: "transparent",
+      animationDuration: 300,
+      tooltip: {
+        trigger: "axis",
+        axisPointer: { type: "line" },
+        valueFormatter: (v) => (typeof v === "number" ? String(Math.round(v * 100) / 100) : String(v)),
+      },
+      legend: { type: "scroll", textStyle: { color: axisColor } },
+      grid: { left: 48, right: 16, top: 36, bottom: 64 },
+      xAxis: {
+        type: "category",
+        data: full.dates,
+        boundaryGap: false,
+        axisLabel: {
+          color: axisColor,
+          hideOverlap: true,
+          formatter: (v: string) => v.slice(5).replace("-", "/"),
+        },
+        axisLine: { lineStyle: { color: splitColor } },
+      },
+      yAxis: {
+        type: "value",
+        scale: true,
+        splitNumber: 4,
+        axisLabel: { color: axisColor },
+        splitLine: { lineStyle: { color: splitColor, type: "dashed" } },
+      },
+      dataZoom: [
+        {
+          type: "inside",
+          xAxisIndex: 0,
+          ...(days == null
+            ? {}
+            : { startValue: full.dates[Math.max(0, last - days + 1)], endValue: full.dates[last] }),
+        },
+        {
+          type: "slider",
+          xAxisIndex: 0,
+          height: 24,
+          bottom: 8,
+          borderColor: splitColor,
+          textStyle: { color: axisColor },
+          ...(days == null
+            ? {}
+            : { startValue: full.dates[Math.max(0, last - days + 1)], endValue: full.dates[last] }),
+        },
+      ],
+      series: full.users.map((u, i) => ({
+        name: u,
+        type: "line",
+        data: full.cum[i],
+        showSymbol: false,
+        smooth: 0.15,
+        // Downsample huge windows (Largest-Triangle-Three-Buckets) — values stay exact at rest.
+        sampling: "lttb",
+        emphasis: { focus: "series" },
+        lineStyle: { width: 2 },
+      })),
+    };
+    chart.setOption(option, { replaceMerge: ["series", "xAxis", "dataZoom"] });
+  }, [full, range, resolvedTheme]);
+
+  if (loading) {
+    return (
+      <Card className="min-w-0">
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="text-sm sm:text-base">Score Progress</CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+          <Skeleton className="h-56 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="min-w-0">
+      <CardHeader className="p-4 sm:p-6 pb-2 sm:pb-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="text-sm sm:text-base">Score Progress</CardTitle>
+          <div className="flex flex-wrap gap-1" role="group" aria-label="Time period">
+            {RANGES.map((r) => (
+              <Button
+                key={r.key}
+                variant={range === r.key ? "default" : "ghost"}
+                size="sm"
+                className="h-7 px-2 text-xs"
+                aria-pressed={range === r.key}
+                onClick={() => setRange(r.key)}
+              >
+                {r.key}
+              </Button>
+            ))}
+          </div>
+        </div>
+        <p className="text-[11px] text-muted-foreground pt-1">
+          Scroll or pinch to zoom • drag to pan • use the slider below the chart for fine control
+        </p>
+      </CardHeader>
+      <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+        {full.users.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No data yet. Add users and sync.</p>
+        ) : (
+          <div
+            ref={elRef}
+            className="w-full h-[300px]"
+            role="img"
+            aria-label={`Cumulative score progress per user, range ${range}`}
+          />
+        )}
+      </CardContent>
+    </Card>
+  );
+}

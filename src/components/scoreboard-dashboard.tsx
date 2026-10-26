@@ -18,6 +18,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NotifyToggle } from "@/components/notify-toggle";
+import ScoreProgressChart from "@/components/score-progress-chart";
 import Link from "next/link";
 
 interface Question {
@@ -154,7 +155,9 @@ export default function ScoreboardDashboard() {
 
       <Separator className="my-4 sm:my-6" />
 
-      <div className="grid gap-4 sm:gap-6 lg:grid-cols-[300px_minmax(0,1fr)]">
+      <ScoreProgressChart />
+
+      <div className="grid gap-4 sm:gap-6 lg:grid-cols-[300px_minmax(0,1fr)] mt-4 sm:mt-6">
         {/* Calendar sidebar */}
         <div className="w-full lg:w-auto flex justify-center lg:justify-start lg:sticky lg:top-4 self-start">
           <Card className="w-full max-w-[340px] sm:w-fit sm:max-w-none">

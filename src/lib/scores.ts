@@ -77,6 +77,28 @@ export async function getOverallScores(): Promise<TotalRow[]> {
   }));
 }
 
+/** Per-user per-date totals (one row per user+date bucket). */
+export async function getScoreHistory(): Promise<DailyRow[]> {
+  await connectDB();
+  const rows = await Submission.aggregate([
+    { $match: { status: "Accepted" } },
+    {
+      $group: {
+        _id: { date: "$date", username: "$username" },
+        total: { $sum: "$score" },
+        count: { $sum: 1 },
+      },
+    },
+    { $sort: { "_id.date": 1 } },
+  ]);
+  return rows.map((r) => ({
+    username: r._id.username as string,
+    date: r._id.date as string,
+    total: Math.round((r.total as number) * 100) / 100,
+    count: r.count as number,
+  }));
+}
+
 /** Today's (or any date's) leaderboard: sum of scores for docs in that date bucket. */
 export async function getDayScores(date: string): Promise<TotalRow[]> {
   await connectDB();
