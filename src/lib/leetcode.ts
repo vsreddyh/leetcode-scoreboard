@@ -153,7 +153,8 @@ export function formatLocalDayKey(d: Date): string {
  * by design (exact inverse of formatLocalDayKey) — not IST-specific despite
  * operating on IST buckets.
  * Caller must pass validated keys (see isValidDayKey) — like `new Date(y,m,d)`,
- * this normalizes out-of-range components instead of returning Invalid Date. */
+ * this normalizes out-of-range components instead of returning Invalid Date.
+ * All current callers feed pre-validated keys (`istToday`, filtered `activeDates`). */
 export function parseDayBucket(s: string): Date {
   const [y, m, d] = s.split("-").map(Number);
   return new Date(y, m - 1, d);

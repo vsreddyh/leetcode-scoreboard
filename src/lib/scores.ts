@@ -128,7 +128,9 @@ export async function getOverallScores(): Promise<TotalRow[]> {
 export async function getScoreHistory(): Promise<DailyRow[]> {
   await connectDB();
   const rows = await Submission.aggregate([
-    { $match: { status: "Accepted" } },
+    // Shape-filter up front so malformed buckets never travel over the wire
+    // (the chart drops them client-side; same rule as the day route + getActiveDates).
+    { $match: { status: "Accepted", date: { $regex: /^\d{4}-\d{2}-\d{2}$/ } } },
     { $sort: { date: 1, score: -1, _id: 1 } },
     {
       $group: {
