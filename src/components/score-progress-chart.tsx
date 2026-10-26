@@ -90,6 +90,9 @@ export default function ScoreProgressChart({ today }: { today: string }) {
   const [history, setHistory] = useState<DailyRow[]>([]);
   const [fetchError, setFetchError] = useState(false);
   const [loading, setLoading] = useState(true);
+  // Refetch in progress (retry). Unlike `loading`, this never unmounts the
+  // chart: a retry keeps the old series visible instead of blanking to skeleton.
+  const [refreshing, setRefreshing] = useState(false);
   const [range, setRange] = useState<RangeKey>("1M");
   const [retry, setRetry] = useState(0);
   const { resolvedTheme } = useTheme();
@@ -122,7 +125,10 @@ export default function ScoreProgressChart({ today }: { today: string }) {
           setFetchError(true);
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     })();
     return () => {
@@ -248,7 +254,8 @@ export default function ScoreProgressChart({ today }: { today: string }) {
         borderColor: dark ? "#27272a" : "#e4e4e7",
         textStyle: { color: dark ? "#fafafa" : "#09090b" },
         valueFormatter: (v) => {
-          const n = typeof v === "number" ? v : Number(v);
+          const arr = Array.isArray(v) ? v[0] : v;
+          const n = typeof arr === "number" ? arr : Number(arr);
           return Number.isFinite(n) ? fmtScore(n) : String(v);
         },
       },
@@ -378,7 +385,12 @@ export default function ScoreProgressChart({ today }: { today: string }) {
     <Card className="min-w-0">
       <CardHeader className="p-4 sm:p-6 pb-2 sm:pb-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle className="text-sm sm:text-base">Score Progress</CardTitle>
+          <CardTitle className="text-sm sm:text-base">
+            Score Progress{" "}
+            {refreshing && (
+              <span className="text-xs font-normal text-muted-foreground">Updating…</span>
+            )}
+          </CardTitle>
           <div className="flex flex-wrap gap-1" role="group" aria-label="Time period">
             {RANGES.map((r) => {
               // Disabled buttons never surface their title hint (no hover/focus),
@@ -427,7 +439,7 @@ export default function ScoreProgressChart({ today }: { today: string }) {
               size="sm"
               onClick={() => {
                 setFetchError(false);
-                setLoading(true);
+                setRefreshing(true);
                 setRetry((r) => r + 1);
               }}
             >

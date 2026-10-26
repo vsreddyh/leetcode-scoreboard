@@ -124,12 +124,17 @@ export async function getOverallScores(): Promise<TotalRow[]> {
  * Stage 1 collapses to one row per username+titleSlug (same dedupe as
  * getOverallScores, so legacy duplicate docs can't inflate the chart),
  * keeping the earliest solve date; stage 2 sums per date+username.
+ * NOTE the asymmetry with getActiveDates: history intentionally ships
+ * out-of-range *valid* keys so the chart can fold them into the edge buckets
+ * and match the leaderboard — do NOT "fix" this by filtering history to
+ * [SEASON_START, today], or the end-values will diverge again.
  */
 export async function getScoreHistory(): Promise<DailyRow[]> {
   await connectDB();
   const rows = await Submission.aggregate([
-    // Shape-filter up front so malformed buckets never travel over the wire
-    // (the chart drops them client-side; same rule as the day route + getActiveDates).
+    // Shape pre-filter so malformed buckets never travel over the wire (same
+    // shape rule as the day route + getActiveDates; full calendar validity is
+    // still enforced client-side by isValidDayKey).
     { $match: { status: "Accepted", date: { $regex: /^\d{4}-\d{2}-\d{2}$/ } } },
     { $sort: { date: 1, score: -1, _id: 1 } },
     {
