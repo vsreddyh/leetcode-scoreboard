@@ -103,7 +103,7 @@ function fmtScore(v: number): string {
 
 export default function ScoreProgressChart() {
   // Fixed "today" per mount so the date axis never shifts mid-session.
-  const [todayStr] = useState(istToday);
+  const [todayStr] = useState(() => istToday());
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [fetchError, setFetchError] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -173,6 +173,9 @@ export default function ScoreProgressChart() {
       if (r.date < earliest) earliest = r.date;
     }
     if (earliest < SEASON_START) earliest = SEASON_START;
+    // Degenerate case: every row future-dated (clock skew) would invert the axis
+    // and drop all rows from idx — clamp so the axis is at worst a single today.
+    if (earliest > todayStr) earliest = todayStr;
     const endMs = parseDay(endStr);
     const startMs = parseDay(earliest);
     const len = Math.max(1, Math.round((endMs - startMs) / 86400000) + 1);
@@ -313,9 +316,9 @@ export default function ScoreProgressChart() {
         // Cumulative totals are step functions — no smoothing, or the curve
         // implies intermediate values that never existed.
         smooth: false,
-        // Only downsample (Largest-Triangle-Three-Buckets) once the window is
-        // big enough to matter; small windows render every point exactly.
-        ...(full.dates.length > 500 ? { sampling: "lttb" as const } : {}),
+        // Only downsample (Largest-Triangle-Three-Buckets) once the axis exceeds
+        // a full season (~366 days); smaller windows render every point exactly.
+        ...(full.dates.length > 366 ? { sampling: "lttb" as const } : {}),
         emphasis: { focus: "series" },
         lineStyle: { width: 2 },
       })),

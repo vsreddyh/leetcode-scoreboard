@@ -44,7 +44,7 @@ export async function getDayDetail(date: string): Promise<QuestionRow[]> {
   for (const d of docs) {
     const u = d as { username: string };
     const s = d as { titleSlug: string };
-    const key = `${u.username} ${s.titleSlug}`;
+    const key = JSON.stringify([u.username, s.titleSlug]);
     if (seen.has(key)) continue;
     seen.add(key);
     rows.push(d);
