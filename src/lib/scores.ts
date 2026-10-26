@@ -94,7 +94,18 @@ export async function getOverallScores(): Promise<TotalRow[]> {
   const totals = await Submission.aggregate([
     // Non-numeric scores are ignored by $sum, matching the strict JS guards in
     // getDayDetail and the chart filter (all untriggerable via scoreFor).
-    { $match: { status: "Accepted", score: { $type: "number" } } },
+    // Same username shape guard as history: non-string usernames are dropped
+    // client-side from the chart, so exclude them here too. Same date shape
+    // rule as history: overall is NOT a superset — malformed buckets are
+    // excluded everywhere, so all four read paths agree.
+    {
+      $match: {
+        status: "Accepted",
+        username: { $type: "string" },
+        score: { $type: "number" },
+        date: { $regex: /^\d{4}-\d{2}-\d{2}$/ },
+      },
+    },
     // Deterministic $first: earliest solve wins, ties by highest score, then _id.
     // Same order as every other read path so same-date duplicates always agree.
     { $sort: { date: 1, score: -1, _id: 1 } },

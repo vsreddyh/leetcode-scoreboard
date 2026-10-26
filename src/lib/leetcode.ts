@@ -111,6 +111,7 @@ export function parseDayKey(s: string): number {
 }
 
 export function formatDayKey(ms: number): string {
+  // Caller must pass finite epoch ms (see parseDayKey): NaN yields "NaN-NaN-NaN".
   const d = new Date(ms);
   const y = d.getUTCFullYear();
   const m = String(d.getUTCMonth() + 1).padStart(2, "0");

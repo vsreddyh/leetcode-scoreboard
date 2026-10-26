@@ -117,7 +117,16 @@ export default function ScoreboardDashboard() {
         const res = await fetch(`/api/day/${dateStr}`, { cache: "no-store" });
         if (!res.ok) throw new Error(`day ${res.status}`);
         const data = await res.json();
-        if (!cancelled) setQuestions(Array.isArray(data.questions) ? data.questions : []);
+        // Row-shape guard: one malformed row must not mis-group a day card.
+        // (Server coerces score via num(); username/titleSlug pass through raw.)
+        if (!cancelled)
+          setQuestions(
+            Array.isArray(data.questions)
+              ? data.questions.filter(
+                  (q) => typeof q?.username === "string" && typeof q?.titleSlug === "string"
+                )
+              : []
+          );
       } catch (err) {
         console.error(`[dashboard] day fetch failed: ${err instanceof Error ? err.message : String(err)}`);
         if (!cancelled) setQuestions([]);
