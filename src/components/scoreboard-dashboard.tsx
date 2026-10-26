@@ -85,10 +85,8 @@ export default function ScoreboardDashboard() {
         const res = await fetch("/api/overall");
         if (!res.ok) throw new Error(`overall ${res.status}`);
         const data = await res.json();
-        if (!cancelled) {
-          setTotals(Array.isArray(data.totals) ? data.totals : []);
-          setActiveDates(Array.isArray(data.activeDates) ? data.activeDates : []);
-        }
+        setTotals(Array.isArray(data.totals) ? data.totals : []);
+        setActiveDates(Array.isArray(data.activeDates) ? data.activeDates : []);
       } catch {
         /* empty */
       } finally {
