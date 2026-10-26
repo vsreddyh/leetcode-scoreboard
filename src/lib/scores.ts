@@ -55,8 +55,9 @@ export async function getOverallScores(): Promise<TotalRow[]> {
   await connectDB();
   const totals = await Submission.aggregate([
     { $match: { status: "Accepted" } },
-    // Deterministic $first: earliest solve wins, same as getScoreHistory.
-    { $sort: { date: 1 } },
+    // Deterministic $first: earliest solve wins, ties by highest score, then _id.
+    // Same order as getScoreHistory/getDayScores so all three always agree.
+    { $sort: { date: 1, score: -1, _id: 1 } },
     {
       $group: {
         _id: { username: "$username", titleSlug: "$titleSlug" },
@@ -89,7 +90,7 @@ export async function getScoreHistory(): Promise<DailyRow[]> {
   await connectDB();
   const rows = await Submission.aggregate([
     { $match: { status: "Accepted" } },
-    { $sort: { date: 1 } },
+    { $sort: { date: 1, score: -1, _id: 1 } },
     {
       $group: {
         _id: { username: "$username", titleSlug: "$titleSlug" },
@@ -121,7 +122,8 @@ export async function getDayScores(date: string): Promise<TotalRow[]> {
   await connectDB();
   const totals = await Submission.aggregate([
     { $match: { status: "Accepted", date } },
-    { $sort: { date: 1 } },
+    // Same deterministic order as getOverallScores/getScoreHistory.
+    { $sort: { date: 1, score: -1, _id: 1 } },
     {
       $group: {
         _id: { username: "$username", titleSlug: "$titleSlug" },

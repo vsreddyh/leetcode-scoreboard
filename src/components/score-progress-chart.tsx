@@ -98,10 +98,12 @@ export default function ScoreProgressChart() {
   const { resolvedTheme } = useTheme();
   const elRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<echarts.ECharts | null>(null);
-  // Tracks the last applied range so theme-only re-renders don't reset manual zoom.
-  // Null sentinel: the first data paint always counts as a change, applying the
-  // default range window (otherwise the chart would show ALL while 1M looks active).
-  const prevRange = useRef<RangeKey | null>(null);
+  // Last applied zoom key. Null sentinel: the first data paint always counts as a
+  // change, applying the default range window (otherwise the chart would show ALL
+  // while 1M looks active). Clicking a range button always bumps zoomNonce, so
+  // re-clicking the active range snaps back to its labeled window.
+  const prevZoomKey = useRef<string | null>(null);
+  const [zoomNonce, setZoomNonce] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -110,7 +112,7 @@ export default function ScoreProgressChart() {
         const res = await fetch("/api/history", { cache: "no-store" });
         if (!res.ok) throw new Error(`history ${res.status}`);
         const data = await res.json();
-        if (!cancelled) setHistory(data.history ?? []);
+        if (!cancelled) setHistory(Array.isArray(data.history) ? data.history : []);
       } catch {
         if (!cancelled) {
           setHistory([]);
@@ -134,6 +136,7 @@ export default function ScoreProgressChart() {
     const rows = history.filter(
       (r) =>
         /^\d{4}-\d{2}-\d{2}$/.test(r.date) &&
+        Number.isFinite(parseDay(r.date)) &&
         typeof r.total === "number" &&
         Number.isFinite(r.total)
     );
@@ -200,8 +203,12 @@ export default function ScoreProgressChart() {
       span == null
         ? {}
         : { startValue: full.dates[Math.max(0, last - span + 1)], endValue: full.dates[last] };
-    const rangeChanged = prevRange.current !== range;
-    prevRange.current = range;
+    const rangeChanged = (() => {
+      const key = `${range}:${zoomNonce}`;
+      const changed = prevZoomKey.current !== key;
+      prevZoomKey.current = key;
+      return changed;
+    })();
 
     const option: ECOption = {
       color: PALETTE,
@@ -240,7 +247,15 @@ export default function ScoreProgressChart() {
       ...(rangeChanged
         ? {
             dataZoom: [
-              { type: "inside", xAxisIndex: 0, ...window },
+              {
+                type: "inside",
+                xAxisIndex: 0,
+                // Don't hijack page scroll: wheel over the chart scrolls the page;
+                // zoom via pinch, drag-pan, or the slider below.
+                zoomOnMouseWheel: false,
+                moveOnMouseWheel: false,
+                ...window,
+              },
               {
                 type: "slider",
                 xAxisIndex: 0,
@@ -271,7 +286,7 @@ export default function ScoreProgressChart() {
     chart.setOption(option, {
       replaceMerge: rangeChanged ? ["series", "xAxis", "dataZoom"] : ["series", "xAxis"],
     });
-  }, [full, range, resolvedTheme]);
+  }, [full, range, zoomNonce, resolvedTheme]);
 
   if (loading) {
     return (
@@ -299,7 +314,12 @@ export default function ScoreProgressChart() {
                 size="sm"
                 className="h-7 px-2 text-xs"
                 aria-pressed={range === r.key}
-                onClick={() => setRange(r.key)}
+                onClick={() => {
+                  // Always re-apply, even for the active range, so a click snaps
+                  // back from any manual zoom/pan to the labeled window.
+                  setRange(r.key);
+                  setZoomNonce((n) => n + 1);
+                }}
               >
                 {r.key}
               </Button>
@@ -307,8 +327,8 @@ export default function ScoreProgressChart() {
           </div>
         </div>
         <p className="text-[11px] text-muted-foreground pt-1">
-          Cumulative totals • scroll or pinch to zoom • drag to pan • use the slider below the
-          chart for fine control
+          Cumulative totals • pinch or slider to zoom • drag to pan • re-click a range to
+          reset
         </p>
       </CardHeader>
       <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
