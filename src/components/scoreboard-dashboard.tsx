@@ -83,6 +83,7 @@ export default function ScoreboardDashboard() {
     (async () => {
       try {
         const res = await fetch("/api/overall");
+        if (!res.ok) throw new Error(`overall ${res.status}`);
         const data = await res.json();
         setTotals(data.totals ?? []);
         setActiveDates(data.activeDates ?? []);
@@ -101,6 +102,7 @@ export default function ScoreboardDashboard() {
       setDayLoading(true);
       try {
         const res = await fetch(`/api/day/${dateStr}`);
+        if (!res.ok) throw new Error(`day ${res.status}`);
         const data = await res.json();
         if (!cancelled) setQuestions(data.questions ?? []);
       } catch {

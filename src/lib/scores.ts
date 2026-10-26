@@ -1,5 +1,5 @@
 import { connectDB } from "@/lib/db";
-import { getQuestionDetails, scoreFor } from "@/lib/leetcode";
+import { getQuestionDetails, scoreFor, todayIST, SEASON_START } from "@/lib/leetcode";
 import { Submission } from "@/models/Submission";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -67,7 +67,10 @@ export async function getDayDetail(date: string): Promise<QuestionRow[]> {
 export async function getActiveDates(): Promise<string[]> {
   await connectDB();
   const dates = await Submission.distinct("date", { status: "Accepted" });
-  return dates.sort();
+  // Keep the calendar consistent with the chart axis, which folds everything
+  // outside [SEASON_START, today] into the edge buckets.
+  const today = todayIST();
+  return dates.sort().filter((d) => d >= SEASON_START && d <= today);
 }
 
 export async function getOverallScores(): Promise<TotalRow[]> {

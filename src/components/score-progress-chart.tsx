@@ -254,8 +254,13 @@ export default function ScoreProgressChart() {
         textStyle: { color: dark ? "#fafafa" : "#09090b" },
         valueFormatter: (v) => (typeof v === "number" ? fmtScore(v) : String(v)),
       },
-      legend: { type: "scroll", textStyle: { color: axisColor } },
-      grid: { left: 48, right: 16, top: 36, bottom: 64 },
+      legend: {
+        type: "scroll",
+        textStyle: { color: axisColor },
+        pageIconColor: axisColor,
+        pageTextStyle: { color: axisColor },
+      },
+      grid: { left: 48, right: 16, top: 36, bottom: 64, containLabel: true },
       xAxis: {
         type: "category",
         data: full.dates,
@@ -276,7 +281,7 @@ export default function ScoreProgressChart() {
         axisLabel: {
           color: axisColor,
           // Same cents rounding as the tooltip so axis and tooltip never disagree.
-          formatter: (v: number) => fmtScore(v),
+          formatter: (v: number | string) => fmtScore(Number(v)),
         },
         splitLine: { lineStyle: { color: splitColor, type: "dashed" } },
       },
