@@ -20,6 +20,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { NotifyToggle } from "@/components/notify-toggle";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { todayIST } from "@/lib/leetcode";
 
 const ScoreProgressChart = dynamic(() => import("@/components/score-progress-chart"), {
   ssr: false,
@@ -60,15 +61,7 @@ const diffColor: Record<string, string> = {
 export default function ScoreboardDashboard() {
   // IST today string, frozen per mount so a midnight rollover mid-session
   // can't leave the calendar and the progress chart disagreeing by a day.
-  const [istToday] = useState(
-    () =>
-      new Intl.DateTimeFormat("en-CA", {
-        timeZone: "Asia/Kolkata",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }).format(new Date())
-  );
+  const [istToday] = useState(() => todayIST());
 
   const [selected, setSelected] = useState<Date | undefined>(() => parseISO(istToday));
   const [dateStr, setDateStr] = useState(() => istToday);
@@ -82,7 +75,7 @@ export default function ScoreboardDashboard() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch("/api/overall");
+        const res = await fetch("/api/overall", { cache: "no-store" });
         if (!res.ok) throw new Error(`overall ${res.status}`);
         const data = await res.json();
         setTotals(Array.isArray(data.totals) ? data.totals : []);
@@ -101,7 +94,7 @@ export default function ScoreboardDashboard() {
     void (async () => {
       setDayLoading(true);
       try {
-        const res = await fetch(`/api/day/${dateStr}`);
+        const res = await fetch(`/api/day/${dateStr}`, { cache: "no-store" });
         if (!res.ok) throw new Error(`day ${res.status}`);
         const data = await res.json();
         if (!cancelled) setQuestions(Array.isArray(data.questions) ? data.questions : []);

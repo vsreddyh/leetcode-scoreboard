@@ -15,7 +15,7 @@ import {
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import { useTheme } from "next-themes";
-import { SEASON_START } from "@/lib/leetcode";
+import { SEASON_START, todayIST } from "@/lib/leetcode";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -69,15 +69,6 @@ const PALETTE = [
   "#0369a1",
 ];
 
-function istToday(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Kolkata",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
-
 function parseDay(s: string): number {
   const [y, m, d] = s.split("-").map(Number);
   return Date.UTC(y, m - 1, d);
@@ -99,7 +90,7 @@ function fmtScore(v: number): string {
 
 export default function ScoreProgressChart() {
   // Fixed "today" per mount so the date axis never shifts mid-session.
-  const [todayStr] = useState(() => istToday());
+  const [todayStr] = useState(() => todayIST());
   const [history, setHistory] = useState<DailyRow[]>([]);
   const [fetchError, setFetchError] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -196,9 +187,9 @@ export default function ScoreProgressChart() {
   }, [history, todayStr]);
 
   // Chart instance lifecycle: init once, resize with container, dispose on unmount.
-  // Deps include the user count AND axis length: a re-fetch that changes either
-  // re-creates the instance, which resets the zoom key so the range window is
-  // re-applied instead of pointing at a stale dates array.
+  // Deps cover the whole model identity: any re-fetch that changes users OR the
+  // axis range re-creates the instance, which resets the zoom key so the range
+  // window is re-applied instead of pointing at stale data.
   useEffect(() => {
     const el = elRef.current;
     if (!el || loading || full.users.length === 0) return;
@@ -214,7 +205,7 @@ export default function ScoreProgressChart() {
       chart.dispose();
       chartRef.current = null;
     };
-  }, [loading, full.users.length, full.dates.length]);
+  }, [loading, full]);
 
   // Data + range + theme → chart option. ECharts owns zoom/pan state internally;
   // the range window is only re-applied when the range button changes, so a
