@@ -375,7 +375,7 @@ export default function ScoreProgressChart() {
                   size="sm"
                   className="h-7 px-2 text-xs aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
                   aria-pressed={range === r.key}
-                  aria-disabled={!interactive || outOfRange}
+                  aria-disabled={!interactive || (outOfRange && range !== r.key)}
                   title={outOfRange ? "Not enough history yet for this range" : undefined}
                   onClick={() => {
                     // Out-of-range clicks are no-ops — except on the ACTIVE range,

@@ -66,7 +66,7 @@ export async function getDayDetail(date: string): Promise<QuestionRow[]> {
     date: (d as { date: string }).date,
     acRate: (d as { acRate?: number | null }).acRate ?? null,
     difficulty: (d as { difficulty?: string | null }).difficulty ?? null,
-    score: (d as { score: number }).score,
+    score: num((d as { score?: unknown }).score),
     lang: (d as { lang?: string }).lang ?? "",
   }));
 }

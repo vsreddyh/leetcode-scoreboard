@@ -156,6 +156,7 @@ export default function ScoreboardDashboard() {
     () => activeDates.map((d) => parseISTDayBucket(d)),
     [activeDates]
   );
+  const todayMarker = useMemo(() => parseISTDayBucket(istToday), [istToday]);
 
   return (
     <div className="flex-1 w-full max-w-5xl mx-auto px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
@@ -199,7 +200,7 @@ export default function ScoreboardDashboard() {
                   className="rounded-md max-w-full"
                   modifiers={{
                     hasData: dataDays,
-                    today: parseISTDayBucket(istToday),
+                    today: todayMarker,
                   }}
                   modifiersClassNames={{
                     hasData:
