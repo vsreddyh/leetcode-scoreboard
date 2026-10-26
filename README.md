@@ -16,6 +16,7 @@ Next.js + MongoDB scoreboard. **Score per Accepted problem = 100 − acceptance 
 | `/admin` | password | user management + sync + latest 50 |
 | `/admin/login` | public | password login |
 | `GET /api/overall` | public | totals + active dates from Mongo |
+| `GET /api/history` | public | per-user per-day totals for the progress chart |
 | `GET /api/day/[date]` | public | per-day scores from Mongo |
 | `GET/POST /api/sync` | admin cookie, `?secret=` or `Bearer CRON_SECRET` | sync all tracked users |
 | `GET/POST/DELETE /api/admin/users` | admin cookie | tracked-user CRUD |

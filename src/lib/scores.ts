@@ -77,14 +77,27 @@ export async function getOverallScores(): Promise<TotalRow[]> {
   }));
 }
 
-/** Per-user per-date totals (one row per user+date bucket). */
+/**
+ * Per-user per-date totals (one row per user+date bucket).
+ * Stage 1 collapses to one row per username+titleSlug (same dedupe as
+ * getOverallScores, so legacy duplicate docs can't inflate the chart),
+ * keeping the earliest solve date; stage 2 sums per date+username.
+ */
 export async function getScoreHistory(): Promise<DailyRow[]> {
   await connectDB();
   const rows = await Submission.aggregate([
     { $match: { status: "Accepted" } },
+    { $sort: { date: 1 } },
     {
       $group: {
-        _id: { date: "$date", username: "$username" },
+        _id: { username: "$username", titleSlug: "$titleSlug" },
+        score: { $first: "$score" },
+        date: { $first: "$date" },
+      },
+    },
+    {
+      $group: {
+        _id: { date: "$date", username: "$_id.username" },
         total: { $sum: "$score" },
         count: { $sum: 1 },
       },

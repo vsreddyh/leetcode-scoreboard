@@ -18,8 +18,13 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NotifyToggle } from "@/components/notify-toggle";
-import ScoreProgressChart from "@/components/score-progress-chart";
+import dynamic from "next/dynamic";
 import Link from "next/link";
+
+const ScoreProgressChart = dynamic(() => import("@/components/score-progress-chart"), {
+  ssr: false,
+  loading: () => <Skeleton className="h-[380px] w-full rounded-xl" />,
+});
 
 interface Question {
   username: string;

@@ -91,21 +91,28 @@ export default function ScoreProgressChart() {
   // Fixed "today" per mount so the date axis never shifts mid-session.
   const [todayStr] = useState(istToday);
   const [history, setHistory] = useState<HistoryRow[]>([]);
+  const [fetchError, setFetchError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [range, setRange] = useState<RangeKey>("1M");
   const { resolvedTheme } = useTheme();
   const elRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<echarts.ECharts | null>(null);
+  // Tracks the last applied range so theme-only re-renders don't reset manual zoom.
+  const prevRange = useRef<RangeKey>(range);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch("/api/history");
+        const res = await fetch("/api/history", { cache: "no-store" });
+        if (!res.ok) throw new Error(`history ${res.status}`);
         const data = await res.json();
         if (!cancelled) setHistory(data.history ?? []);
       } catch {
-        if (!cancelled) setHistory([]);
+        if (!cancelled) {
+          setHistory([]);
+          setFetchError(true);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -118,12 +125,20 @@ export default function ScoreProgressChart() {
   /**
    * Full-resolution model in a single pass: calendar date axis
    * (earliest solve → today) + cumulative totals per user.
+   * Rows with malformed dates are skipped so one bad doc can't break the axis.
    */
   const full = useMemo(() => {
-    const users = [...new Set(history.map((r) => r.username))].sort();
+    const rows = history.filter(
+      (r) =>
+        /^\d{4}-\d{2}-\d{2}$/.test(r.date) &&
+        typeof r.total === "number" &&
+        Number.isFinite(r.total)
+    );
+    const users = [...new Set(rows.map((r) => r.username))].sort();
+    const uIdx = new Map(users.map((u, i) => [u, i] as const));
     const endMs = parseDay(todayStr);
     let earliest = todayStr;
-    for (const r of history) {
+    for (const r of rows) {
       if (r.date < earliest) earliest = r.date;
     }
     const startMs = parseDay(earliest);
@@ -133,10 +148,10 @@ export default function ScoreProgressChart() {
 
     const idx = new Map<string, number>(dates.map((d, i) => [d, i]));
     const cum: number[][] = users.map(() => new Array<number>(len).fill(0));
-    for (const r of history) {
-      const u = users.indexOf(r.username);
+    for (const r of rows) {
+      const u = uIdx.get(r.username);
       const d = idx.get(r.date);
-      if (u >= 0 && d !== undefined) cum[u][d] += r.total;
+      if (u !== undefined && d !== undefined) cum[u][d] += r.total;
     }
     for (let u = 0; u < users.length; u++) {
       const a = cum[u];
@@ -161,7 +176,9 @@ export default function ScoreProgressChart() {
     };
   }, [loading, full.users.length]);
 
-  // Data + range + theme → chart option. ECharts owns zoom/pan state internally.
+  // Data + range + theme → chart option. ECharts owns zoom/pan state internally;
+  // the range window is only re-applied when the range button changes, so a
+  // theme toggle never resets a manual zoom.
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart || full.users.length === 0) return;
@@ -170,6 +187,14 @@ export default function ScoreProgressChart() {
     const splitColor = dark ? "#27272a" : "#e4e4e7";
     const last = full.dates.length - 1;
     const days = RANGES.find((r) => r.key === range)?.days ?? null;
+    // 1D needs ≥2 points or the line is a single invisible dot (showSymbol: false).
+    const span = days == null ? null : Math.max(2, days);
+    const window =
+      span == null
+        ? {}
+        : { startValue: full.dates[Math.max(0, last - span + 1)], endValue: full.dates[last] };
+    const rangeChanged = prevRange.current !== range;
+    prevRange.current = range;
 
     const option: ECOption = {
       color: PALETTE,
@@ -200,39 +225,42 @@ export default function ScoreProgressChart() {
         axisLabel: { color: axisColor },
         splitLine: { lineStyle: { color: splitColor, type: "dashed" } },
       },
-      dataZoom: [
-        {
-          type: "inside",
-          xAxisIndex: 0,
-          ...(days == null
-            ? {}
-            : { startValue: full.dates[Math.max(0, last - days + 1)], endValue: full.dates[last] }),
-        },
-        {
-          type: "slider",
-          xAxisIndex: 0,
-          height: 24,
-          bottom: 8,
-          borderColor: splitColor,
-          textStyle: { color: axisColor },
-          ...(days == null
-            ? {}
-            : { startValue: full.dates[Math.max(0, last - days + 1)], endValue: full.dates[last] }),
-        },
-      ],
+      // Only (re)apply the range window when the range button changed — omitting
+      // dataZoom otherwise leaves any manual zoom/pan untouched.
+      ...(rangeChanged
+        ? {
+            dataZoom: [
+              { type: "inside", xAxisIndex: 0, ...window },
+              {
+                type: "slider",
+                xAxisIndex: 0,
+                height: 24,
+                bottom: 8,
+                borderColor: splitColor,
+                textStyle: { color: axisColor },
+                ...window,
+              },
+            ],
+          }
+        : {}),
       series: full.users.map((u, i) => ({
         name: u,
         type: "line",
         data: full.cum[i],
         showSymbol: false,
-        smooth: 0.15,
-        // Downsample huge windows (Largest-Triangle-Three-Buckets) — values stay exact at rest.
+        // Cumulative totals are step functions — no smoothing, or the curve
+        // implies intermediate values that never existed.
+        smooth: false,
+        // Keeps huge windows interactive while rendering; the axis tooltip
+        // still reads the exact per-day cumulative values from the data array.
         sampling: "lttb",
         emphasis: { focus: "series" },
         lineStyle: { width: 2 },
       })),
     };
-    chart.setOption(option, { replaceMerge: ["series", "xAxis", "dataZoom"] });
+    chart.setOption(option, {
+      replaceMerge: rangeChanged ? ["series", "xAxis", "dataZoom"] : ["series", "xAxis"],
+    });
   }, [full, range, resolvedTheme]);
 
   if (loading) {
@@ -269,11 +297,16 @@ export default function ScoreProgressChart() {
           </div>
         </div>
         <p className="text-[11px] text-muted-foreground pt-1">
-          Scroll or pinch to zoom • drag to pan • use the slider below the chart for fine control
+          Cumulative totals • scroll or pinch to zoom • drag to pan • use the slider below the
+          chart for fine control
         </p>
       </CardHeader>
       <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
-        {full.users.length === 0 ? (
+        {fetchError ? (
+          <p className="text-sm text-muted-foreground">
+            Couldn&apos;t load progress data. Try refreshing the page.
+          </p>
+        ) : full.users.length === 0 ? (
           <p className="text-sm text-muted-foreground">No data yet. Add users and sync.</p>
         ) : (
           <div
