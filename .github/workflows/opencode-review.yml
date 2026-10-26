@@ -44,7 +44,7 @@ jobs:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          model: muse-spark-1.3-contributor
+          model: opencode-go/muse-spark-1.3-contributor
           use_github_token: true
           prompt: |
             Review this pull request only. Do not modify code, push commits, or create branches or PRs - post findings as PR comments.
