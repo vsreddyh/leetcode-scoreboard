@@ -31,8 +31,9 @@ export interface TotalRow {
 export async function getDayDetail(date: string): Promise<QuestionRow[]> {
   await connectDB();
   // Same deterministic order as the deduped aggregations (earliest solve wins,
-  // ties by highest score, then _id), so the collapse below picks the same doc
-  // the leaderboard/chart count.
+  // ties by highest score, then _id), so same-date duplicates collapse to the
+  // same doc the leaderboard/chart count. (Cross-date legacy dupes are counted
+  // on their own date here but attributed to the earliest date there.)
   const docs = await Submission.find({ date, status: "Accepted" })
     .sort({ date: 1, score: -1, _id: 1 })
     .lean();
@@ -74,7 +75,7 @@ export async function getOverallScores(): Promise<TotalRow[]> {
   const totals = await Submission.aggregate([
     { $match: { status: "Accepted" } },
     // Deterministic $first: earliest solve wins, ties by highest score, then _id.
-    // Same order as every other read path so all of them always agree.
+    // Same order as every other read path so same-date duplicates always agree.
     { $sort: { date: 1, score: -1, _id: 1 } },
     {
       $group: {

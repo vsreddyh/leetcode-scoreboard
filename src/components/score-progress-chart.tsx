@@ -343,7 +343,7 @@ export default function ScoreProgressChart() {
 
   return (
     <Card className="min-w-0">
-      <CardHeader className="p-4 sm:p-6 pb-2 sm:pb-2">
+      <CardHeader className="p-4 sm:p-6 pb-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <CardTitle className="text-sm sm:text-base">Score Progress</CardTitle>
           <div className="flex flex-wrap gap-1" role="group" aria-label="Time period">
