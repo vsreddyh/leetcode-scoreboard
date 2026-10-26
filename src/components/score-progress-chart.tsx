@@ -146,6 +146,8 @@ export default function ScoreProgressChart() {
     // regex match alone can't reject impossible calendar dates.
     const rows = history.filter(
       (r) =>
+        typeof r.username === "string" &&
+        r.username.length > 0 &&
         /^\d{4}-\d{2}-\d{2}$/.test(r.date) &&
         formatDay(parseDay(r.date)) === r.date &&
         typeof r.total === "number" &&
@@ -153,21 +155,16 @@ export default function ScoreProgressChart() {
     );
     const users = [...new Set(rows.map((r) => r.username))].sort();
     const uIdx = new Map(users.map((u, i) => [u, i] as const));
-    // Clamp the axis end at today, but never drop future-dated docs (clock skew /
-    // bad sync bucket) — otherwise they'd vanish from cum and the chart end-value
-    // would diverge from the leaderboard.
-    let endStr = todayStr;
+    // Clamp both ends so one ancient/typo bucket can't materialize a huge axis:
+    // sync keeps everything on/after SEASON_START. Out-of-range rows below are
+    // folded into the edge buckets (never dropped) so cum still matches the
+    // leaderboard exactly.
+    const endStr = todayStr;
     let earliest = todayStr;
     for (const r of rows) {
       if (r.date < earliest) earliest = r.date;
-      if (r.date > endStr) endStr = r.date;
     }
-    // Bound both ends so one ancient/typo bucket can't materialize a huge axis:
-    // sync keeps everything on/after SEASON_START, and out-of-range rows below
-    // are folded into the edge buckets (never dropped) so cum still matches
-    // the leaderboard exactly.
     if (earliest < SEASON_START) earliest = SEASON_START;
-    if (endStr > todayStr) endStr = todayStr;
     const endMs = parseDay(endStr);
     const startMs = parseDay(earliest);
     const len = Math.max(1, Math.round((endMs - startMs) / 86400000) + 1);
@@ -221,7 +218,8 @@ export default function ScoreProgressChart() {
     const last = full.dates.length - 1;
     const days = RANGES.find((r) => r.key === range)?.days ?? null;
     // 1D needs ≥2 points or the line is a single invisible dot (showSymbol: false).
-    const span = days == null ? null : Math.max(2, days);
+    // Also clamp to the axis length: on a single-day dataset even ALL is 1 point.
+    const span = days == null ? null : Math.min(full.dates.length, Math.max(2, days));
     const window =
       span == null
         ? {}
@@ -298,7 +296,9 @@ export default function ScoreProgressChart() {
         name: u,
         type: "line",
         data: full.cum[i],
-        showSymbol: false,
+        // Dots on tiny axes (e.g. single-day dataset): otherwise a lone point
+        // is invisible.
+        showSymbol: full.dates.length <= 2,
         // Cumulative totals are step functions — no smoothing, or the curve
         // implies intermediate values that never existed.
         smooth: false,
@@ -321,7 +321,7 @@ export default function ScoreProgressChart() {
           <CardTitle className="text-sm sm:text-base">Score Progress</CardTitle>
         </CardHeader>
         <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
-          <Skeleton className="h-56 w-full" />
+          <Skeleton className="h-[300px] w-full" />
         </CardContent>
       </Card>
     );

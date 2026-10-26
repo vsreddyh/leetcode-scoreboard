@@ -30,7 +30,7 @@ const ScoreProgressChart = dynamic(() => import("@/components/score-progress-cha
         <CardTitle className="text-sm sm:text-base">Score Progress</CardTitle>
       </CardHeader>
       <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
-        <Skeleton className="h-56 w-full" />
+        <Skeleton className="h-[300px] w-full" />
       </CardContent>
     </Card>
   ),
