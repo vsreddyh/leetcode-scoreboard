@@ -68,6 +68,9 @@ export default function ScoreboardDashboard() {
   const [istToday] = useState(() => todayIST());
 
   const [selected, setSelected] = useState<Date | undefined>(() => parseISTDayBucket(istToday));
+  // Controlled calendar month so "Jump to today" scrolls into view even after
+  // the user paged elsewhere.
+  const [month, setMonth] = useState<Date>(() => parseISTDayBucket(istToday));
   const [dateStr, setDateStr] = useState(() => istToday);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [totals, setTotals] = useState<Total[]>([]);
@@ -122,6 +125,7 @@ export default function ScoreboardDashboard() {
 
   function onDayClick(day: Date) {
     setSelected(day);
+    setMonth(day);
     const ds = formatLocalDayKey(day);
     // The [dateStr] effect below owns fetching; no direct fetch here so two
     // concurrent requests can't race.
@@ -190,6 +194,8 @@ export default function ScoreboardDashboard() {
                   mode="single"
                   selected={selected}
                   onDayClick={onDayClick}
+                  month={month}
+                  onMonthChange={setMonth}
                   className="rounded-md max-w-full"
                   modifiers={{
                     hasData: dataDays,
@@ -199,7 +205,6 @@ export default function ScoreboardDashboard() {
                     hasData:
                       "bg-primary/10 font-semibold [&>button]:aria-selected:bg-primary",
                   }}
-                  defaultMonth={selected}
                 />
               )}
             </CardContent>

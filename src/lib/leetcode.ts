@@ -137,7 +137,9 @@ export function formatLocalDayKey(d: Date): string {
 }
 
 /** Parse an IST YYYY-MM-DD bucket to a local-midnight Date for calendar display,
- * so the calendar highlights the right day regardless of viewer TZ. */
+ * so the calendar highlights the right day regardless of viewer TZ.
+ * Caller must pass validated keys (see isValidDayKey) — like `new Date(y,m,d)`,
+ * this normalizes out-of-range components instead of returning Invalid Date. */
 export function parseISTDayBucket(s: string): Date {
   const [y, m, d] = s.split("-").map(Number);
   return new Date(y, m - 1, d);

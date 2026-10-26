@@ -297,6 +297,16 @@ export default function ScoreProgressChart() {
                 bottom: 8,
                 borderColor: splitColor,
                 textStyle: { color: axisColor },
+                handleStyle: { color: axisColor, borderColor: axisColor },
+                moveHandleStyle: { color: splitColor },
+                dataBackground: {
+                  lineStyle: { color: splitColor },
+                  areaStyle: { color: splitColor },
+                },
+                selectedDataBackground: {
+                  lineStyle: { color: axisColor },
+                  areaStyle: { color: axisColor },
+                },
                 ...window,
               },
             ],
