@@ -85,8 +85,10 @@ export default function ScoreboardDashboard() {
         const res = await fetch("/api/overall");
         if (!res.ok) throw new Error(`overall ${res.status}`);
         const data = await res.json();
-        setTotals(data.totals ?? []);
-        setActiveDates(data.activeDates ?? []);
+        if (!cancelled) {
+          setTotals(Array.isArray(data.totals) ? data.totals : []);
+          setActiveDates(Array.isArray(data.activeDates) ? data.activeDates : []);
+        }
       } catch {
         /* empty */
       } finally {
@@ -104,7 +106,7 @@ export default function ScoreboardDashboard() {
         const res = await fetch(`/api/day/${dateStr}`);
         if (!res.ok) throw new Error(`day ${res.status}`);
         const data = await res.json();
-        if (!cancelled) setQuestions(data.questions ?? []);
+        if (!cancelled) setQuestions(Array.isArray(data.questions) ? data.questions : []);
       } catch {
         if (!cancelled) setQuestions([]);
       } finally {

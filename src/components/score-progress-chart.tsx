@@ -37,12 +37,7 @@ type ECOption = echarts.ComposeOption<
   | DataZoomComponentOption
 >;
 
-interface HistoryRow {
-  username: string;
-  date: string;
-  total: number;
-  count: number;
-}
+import type { DailyRow } from "@/lib/scores";
 
 type RangeKey = "1D" | "1W" | "1M" | "6M" | "1Y" | "ALL";
 
@@ -98,13 +93,14 @@ function formatDay(ms: number): string {
 
 /** Round to cents for display (tooltip + axis share this so they never disagree). */
 function fmtScore(v: number): string {
-  return (Math.round(v * 100) / 100).toFixed(2);
+  // + 0 normalizes -0 so totals never render as "-0.00".
+  return (Math.round(v * 100) / 100 + 0).toFixed(2);
 }
 
 export default function ScoreProgressChart() {
   // Fixed "today" per mount so the date axis never shifts mid-session.
   const [todayStr] = useState(() => istToday());
-  const [history, setHistory] = useState<HistoryRow[]>([]);
+  const [history, setHistory] = useState<DailyRow[]>([]);
   const [fetchError, setFetchError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [range, setRange] = useState<RangeKey>("1M");
@@ -200,6 +196,9 @@ export default function ScoreProgressChart() {
   }, [history, todayStr]);
 
   // Chart instance lifecycle: init once, resize with container, dispose on unmount.
+  // Deps include the user count AND axis length: a re-fetch that changes either
+  // re-creates the instance, which resets the zoom key so the range window is
+  // re-applied instead of pointing at a stale dates array.
   useEffect(() => {
     const el = elRef.current;
     if (!el || loading || full.users.length === 0) return;
@@ -215,7 +214,7 @@ export default function ScoreProgressChart() {
       chart.dispose();
       chartRef.current = null;
     };
-  }, [loading, full.users.length]);
+  }, [loading, full.users.length, full.dates.length]);
 
   // Data + range + theme → chart option. ECharts owns zoom/pan state internally;
   // the range window is only re-applied when the range button changes, so a
@@ -252,7 +251,10 @@ export default function ScoreProgressChart() {
         backgroundColor: dark ? "#09090b" : "#ffffff",
         borderColor: dark ? "#27272a" : "#e4e4e7",
         textStyle: { color: dark ? "#fafafa" : "#09090b" },
-        valueFormatter: (v) => (typeof v === "number" ? fmtScore(v) : String(v)),
+        valueFormatter: (v) => {
+          const n = typeof v === "number" ? v : Number(v);
+          return Number.isFinite(n) ? fmtScore(n) : String(v);
+        },
       },
       legend: {
         type: "scroll",
@@ -346,6 +348,9 @@ export default function ScoreProgressChart() {
     );
   }
 
+  // No chart, no zoom targets: keep the range group inert on error/empty states.
+  const interactive = !fetchError && full.users.length > 0;
+
   return (
     <Card className="min-w-0">
       <CardHeader className="p-4 sm:p-6 pb-2">
@@ -359,6 +364,7 @@ export default function ScoreProgressChart() {
                 size="sm"
                 className="h-7 px-2 text-xs"
                 aria-pressed={range === r.key}
+                disabled={!interactive}
                 onClick={() => {
                   // Always re-apply, even for the active range, so a click snaps
                   // back from any manual zoom/pan to the labeled window.
