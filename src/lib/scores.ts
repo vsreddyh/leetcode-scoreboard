@@ -64,7 +64,8 @@ export async function getDayDetail(date: string): Promise<QuestionRow[]> {
   );
   return rows.map((d) => ({
     username: (d as { username: string }).username,
-    title: (d as { title: string }).title ?? "",
+    title:
+      typeof (d as { title?: unknown }).title === "string" ? (d as { title: string }).title : "",
     titleSlug: (d as { titleSlug: string }).titleSlug,
     date: (d as { date: string }).date,
     acRate: (d as { acRate?: number | null }).acRate ?? null,
@@ -79,8 +80,12 @@ export async function getActiveDates(): Promise<string[]> {
   const today = todayIST();
   // Push the [SEASON_START, today] range into Mongo so malformed/out-of-range
   // buckets never leave the DB; isValidDayKey still rejects bad shapes.
+  // Type guards match the history/overall pipelines: a bucket containing only
+  // malformed docs must not highlight a calendar day with zero points behind it.
   const dates: unknown[] = await Submission.distinct("date", {
     status: "Accepted",
+    username: { $type: "string" },
+    score: { $type: "number" },
     date: { $gte: SEASON_START, $lte: today },
   });
   // Keep the calendar consistent with the chart axis, which folds everything
@@ -98,15 +103,18 @@ export async function getOverallScores(): Promise<TotalRow[]> {
     // Non-numeric scores are ignored by $sum, matching the strict JS guards in
     // getDayDetail and the chart filter (all untriggerable via scoreFor).
     // Same username shape guard as history: non-string usernames are dropped
-    // client-side from the chart, so exclude them here too. Same date shape
-    // rule as history: overall is NOT a superset — malformed buckets are
-    // excluded everywhere, so all four read paths agree.
+    // client-side from the chart, so exclude them here too. Same date rule as
+    // history (shape + [SEASON_START, today] range): overall is NOT a
+    // superset — out-of-range buckets are excluded everywhere, so all four
+    // read paths agree. (Impossible-calendar keys *inside* the range still
+    // pass the shape check and are dropped client-side only; untriggerable
+    // via dayKey()/todayIST().)
     {
       $match: {
         status: "Accepted",
         username: { $type: "string" },
         score: { $type: "number" },
-        date: { $regex: /^\d{4}-\d{2}-\d{2}$/ },
+        date: { $regex: /^\d{4}-\d{2}-\d{2}$/, $gte: SEASON_START, $lte: todayIST() },
       },
     },
     // Deterministic $first: earliest solve wins, ties by highest score, then _id.

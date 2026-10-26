@@ -188,6 +188,10 @@ export default function ScoreboardDashboard() {
     () => activeDates.filter(isValidDayKey).map((d) => parseDayBucketDate(d)),
     [activeDates]
   );
+  // IST-primary by design: the whole board is IST-bucketed (header "Today",
+  // dateStr comparisons, chart axis), so the marker follows the IST bucket even
+  // when it differs from the viewer's local day. Local-midnight construction
+  // keeps the highlighted cell aligned with the calendar rendering.
   const todayMarker = useMemo(() => parseDayBucketDate(istToday), [istToday]);
 
   return (

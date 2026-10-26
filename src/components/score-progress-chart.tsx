@@ -350,10 +350,13 @@ export default function ScoreProgressChart({ today }: { today: string }) {
     if (resetWindow) {
       chart.setOption(option, { replaceMerge: ["series", "xAxis", "dataZoom"] });
     } else {
-      // Theme-only updates plain-merge: series colors are theme-independent, so
-      // re-setting them would just dispose and re-animate every line, and the
-      // manual dataZoom window survives (start/end persist when omitted).
-      chart.setOption(option);
+      // Theme-only updates skip the series entirely (styling-only setOption):
+      // data is theme-independent, so resending it would just dispose and
+      // re-animate every line. Plain merge keeps the manual dataZoom window
+      // (start/end persist when omitted) and refreshes all chrome colors.
+      const { series: _dropped, ...styleOption } = option;
+      void _dropped;
+      chart.setOption(styleOption);
     }
   }, [full, range, zoomNonce, resolvedTheme]);
 
