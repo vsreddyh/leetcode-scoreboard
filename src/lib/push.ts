@@ -1,6 +1,7 @@
 import webpush from "web-push";
 import { connectDB } from "@/lib/db";
 import { PushSub } from "@/models/PushSub";
+import { fmtScore } from "@/lib/leetcode";
 
 let configured = false;
 
@@ -99,7 +100,7 @@ export async function notifyAfterSync(synced: Record<string, number>) {
       const totals = await getDayScores(todayIST());
       todayPts = new Map(totals.map((t) => [t.username, t.total]));
       const leader = totals[0];
-      if (leader) todayLeader = ` • Today's leader: ${leader.username} (${leader.total} pts)`;
+      if (leader) todayLeader = ` • Today's leader: ${leader.username} (${fmtScore(leader.total)} pts)`;
     } catch {
       /* today points are best-effort; notification still goes out without them */
     }
@@ -109,7 +110,7 @@ export async function notifyAfterSync(synced: Record<string, number>) {
       if (count > 0) {
         const pts = todayPts.get(user);
         summaryParts.push(
-          pts != null ? `${user} +${count} (today ${pts} pts)` : `${user} +${count}`
+          pts != null ? `${user} +${count} (today ${fmtScore(pts)} pts)` : `${user} +${count}`
         );
       }
     }

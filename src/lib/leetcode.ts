@@ -101,6 +101,68 @@ export function todayIST(): string {
 /** Fixed season start (IST date bucket). Sync keeps everything on/after this. */
 export const SEASON_START = "2026-09-08";
 
+/** UTC-midnight math for IST YYYY-MM-DD buckets (no DST/time-shift issues).
+ * Caller must pass validated keys (see isValidDayKey): garbage in yields
+ * Date.UTC normalization or NaN out. Returns epoch ms — see parseDayBucketDate
+ * for the local-midnight Date variant used by the calendar. */
+export function parseDayKeyMs(s: string): number {
+  const [y, m, d] = s.split("-").map(Number);
+  return Date.UTC(y, m - 1, d);
+}
+
+export function formatDayKey(ms: number): string {
+  // Caller must pass finite epoch ms (see parseDayKeyMs): NaN yields "NaN-NaN-NaN".
+  const d = new Date(ms);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** Round a score to cents for display. Shared by tables and the chart tooltip
+ * so every surface renders the same string ("88.40", never "88.4" vs "88.40").
+ * The + 0 normalizes -0 so totals never render as "-0.00". */
+export function fmtScore(v: number): string {
+  return (Math.round(v * 100) / 100 + 0).toFixed(2);
+}
+
+/** True for real IST calendar buckets: shape check, explicit year range (Date.UTC
+ * maps years 0-99 to 19xx, so the round-trip below would reject them for the
+ * wrong reason), and round-trip guard, since Date.UTC normalizes overflow
+ * (2026-13-99 rolls into 2027 instead of NaN). */
+export function isValidDayKey(s: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const [y, m, d] = s.split("-").map(Number);
+  if (y < 100) return false;
+  const t = new Date(Date.UTC(y, m - 1, d));
+  return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d;
+}
+
+/** Format a calendar cell Date as a YYYY-MM-DD bucket from its LOCAL calendar
+ * components (not via an IST-formatted instant). A clicked cell must resolve to
+ * the date shown on the cell in every viewer TZ: round-tripping a local-midnight
+ * Date through IST formatting breaks east of IST (JST midnight is still the
+ * previous day in IST), while local components are exactly the cell label. */
+export function formatLocalDayKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** Parse a YYYY-MM-DD bucket to a local-midnight Date for calendar display, so
+ * the calendar highlights the right day regardless of viewer TZ. TZ-agnostic
+ * by design (exact inverse of formatLocalDayKey) — not IST-specific despite
+ * operating on IST buckets. Counterpart: parseDayKeyMs returns epoch ms for the
+ * same bucket (axis math); don't swap them.
+ * Caller must pass validated keys (see isValidDayKey) — like `new Date(y,m,d)`,
+ * this normalizes out-of-range components instead of returning Invalid Date.
+ * All current callers feed pre-validated keys (`istToday`, filtered `activeDates`). */
+export function parseDayBucketDate(s: string): Date {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
 /** Current IST wall-clock minutes since midnight. */
 export function istMinutesNow(): number {
   const now = new Date();

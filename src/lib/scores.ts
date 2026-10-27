@@ -1,5 +1,5 @@
 import { connectDB } from "@/lib/db";
-import { getQuestionDetails, scoreFor } from "@/lib/leetcode";
+import { getQuestionDetails, scoreFor, todayIST, SEASON_START, isValidDayKey } from "@/lib/leetcode";
 import { Submission } from "@/models/Submission";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -15,11 +15,12 @@ export interface QuestionRow {
   lang: string;
 }
 
+/** One cumulative-chart point: a user's total for a single IST date bucket.
+ * (No `count` — the chart never renders it, so the history payload skips it.) */
 export interface DailyRow {
   username: string;
   date: string;
   total: number;
-  count: number;
 }
 
 export interface TotalRow {
@@ -30,31 +31,105 @@ export interface TotalRow {
 
 export async function getDayDetail(date: string): Promise<QuestionRow[]> {
   await connectDB();
+  // Same deterministic order as the deduped aggregations (earliest solve wins,
+  // ties by highest score, then _id), so same-date duplicates collapse to the
+  // same doc the leaderboard/chart count. (Cross-date legacy dupes are counted
+  // on their own date here but attributed to the earliest date there.)
   const docs = await Submission.find({ date, status: "Accepted" })
-    .sort({ score: -1 })
+    .sort({ date: 1, score: -1, _id: 1 })
     .lean();
-  return docs.map((d) => ({
+  // Collapse legacy duplicate docs (same user+question) to one row, mirroring
+  // the $group dedupe in getOverallScores/getScoreHistory/getDayScores. Fresh
+  // data can't hit this (unique {username,titleSlug} index). Docs with
+  // non-string username/titleSlug are dropped like the aggregation $type
+  // guards and the dashboard row filter do.
+  const seen = new Set<string>();
+  const rows = [];
+  for (const d of docs) {
+    const u = d as { username?: unknown };
+    const s = d as { titleSlug?: unknown };
+    if (typeof u.username !== "string" || typeof s.titleSlug !== "string") continue;
+    const key = JSON.stringify([u.username, s.titleSlug]);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push(d);
+  }
+  // Display order: highest score first (previous behavior). Strict finite-number
+  // guard (not coercion): legacy non-numeric scores count as 0 everywhere, so
+  // the detail view agrees with the $sum pipelines, which ignore non-numerics.
+  // Untriggerable via scoreFor (always a number); structural only.
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+  rows.sort(
+    (a, b) => num((b as { score?: unknown }).score) - num((a as { score?: unknown }).score)
+  );
+  return rows.map((d) => ({
     username: (d as { username: string }).username,
-    title: (d as { title: string }).title ?? "",
+    title:
+      typeof (d as { title?: unknown }).title === "string" ? (d as { title: string }).title : "",
     titleSlug: (d as { titleSlug: string }).titleSlug,
     date: (d as { date: string }).date,
-    acRate: (d as { acRate?: number | null }).acRate ?? null,
-    difficulty: (d as { difficulty?: string | null }).difficulty ?? null,
-    score: (d as { score: number }).score,
-    lang: (d as { lang?: string }).lang ?? "",
+    // Strict guards: a legacy non-numeric acRate would crash toFixed() in the
+    // day table, and a non-string difficulty/lang would render garbage.
+    acRate:
+      typeof (d as { acRate?: unknown }).acRate === "number" &&
+      Number.isFinite((d as { acRate?: unknown }).acRate as number)
+        ? (d as { acRate: number }).acRate
+        : null,
+    difficulty:
+      typeof (d as { difficulty?: unknown }).difficulty === "string"
+        ? (d as { difficulty: string }).difficulty
+        : null,
+    score: num((d as { score?: unknown }).score),
+    lang:
+      typeof (d as { lang?: unknown }).lang === "string" ? (d as { lang: string }).lang : "",
   }));
 }
 
 export async function getActiveDates(): Promise<string[]> {
   await connectDB();
-  const dates = await Submission.distinct("date", { status: "Accepted" });
-  return dates.sort();
+  const today = todayIST();
+  // Push the [SEASON_START, today] range into Mongo so malformed/out-of-range
+  // buckets never leave the DB; isValidDayKey still rejects bad shapes.
+  // Type guards match the history/overall pipelines: a bucket containing only
+  // malformed docs must not highlight a calendar day with zero points behind it.
+  const dates: unknown[] = await Submission.distinct("date", {
+    status: "Accepted",
+    username: { $type: "string" },
+    score: { $type: "number" },
+    date: { $gte: SEASON_START, $lte: today },
+  });
+  // Keep the calendar consistent with the chart axis, which folds everything
+  // outside [SEASON_START, today] into the edge buckets — and drop malformed
+  // buckets the chart would reject, so no highlighted day lacks a chart point.
+  // Filter before sort so malformed buckets never enter the ordering.
+  return (dates as string[])
+    .filter((d) => typeof d === "string" && isValidDayKey(d))
+    .sort();
 }
 
 export async function getOverallScores(): Promise<TotalRow[]> {
   await connectDB();
   const totals = await Submission.aggregate([
-    { $match: { status: "Accepted" } },
+    // Non-numeric scores are ignored by $sum, matching the strict JS guards in
+    // getDayDetail and the chart filter (all untriggerable via scoreFor).
+    // Same username shape guard as history: non-string usernames are dropped
+    // client-side from the chart, so exclude them here too. Same date shape
+    // rule as history — but NO range filter (see NOTE on the $match below).
+    {
+      $match: {
+        status: "Accepted",
+        username: { $type: "string" },
+        score: { $type: "number" },
+        date: { $regex: /^\d{4}-\d{2}-\d{2}$/ },
+      },
+    },
+    // NOTE: no date-range filter here on purpose — history and day views count
+    // every valid-shape doc (folding out-of-range ones into the edge buckets),
+    // so overall must too, or the end-values diverge by exactly the
+    // out-of-range sum.
+    // Deterministic $first: earliest solve wins, ties by highest score, then _id.
+    // Same order as every other read path so same-date duplicates always agree.
+    { $sort: { date: 1, score: -1, _id: 1 } },
     {
       $group: {
         _id: { username: "$username", titleSlug: "$titleSlug" },
@@ -72,19 +147,82 @@ export async function getOverallScores(): Promise<TotalRow[]> {
   ]);
   return totals.map((t) => ({
     username: t._id as string,
-    total: Math.round(t.total * 100) / 100,
+    // Raw total: display rounds once via fmtScore (tables + push text).
+    total: t.total as number,
     count: t.count as number,
   }));
 }
 
-/** Today's (or any date's) leaderboard: sum of scores for docs in that date bucket. */
+/**
+ * Per-user per-date totals (one row per user+date bucket).
+ * Stage 1 collapses to one row per username+titleSlug (same dedupe as
+ * getOverallScores, so legacy duplicate docs can't inflate the chart),
+ * keeping the earliest solve date; stage 2 sums per date+username.
+ * NOTE the asymmetry with getActiveDates: history intentionally ships
+ * out-of-range *valid* keys so the chart can fold them into the edge buckets
+ * and match the leaderboard — do NOT "fix" this by filtering history to
+ * [SEASON_START, today], or the end-values will diverge again.
+ */
+export async function getScoreHistory(): Promise<DailyRow[]> {
+  await connectDB();
+  const rows = await Submission.aggregate([
+    // Shape pre-filter so malformed buckets never travel over the wire (same
+    // shape rule as the day route + getActiveDates; full calendar validity,
+    // including impossible-calendar dates like 2026-02-30, is enforced
+    // client-side by isValidDayKey — see the hedge on getOverallScores).
+    {
+      $match: {
+        status: "Accepted",
+        username: { $type: "string" },
+        score: { $type: "number" },
+        date: { $regex: /^\d{4}-\d{2}-\d{2}$/ },
+      },
+    },
+    { $sort: { date: 1, score: -1, _id: 1 } },
+    {
+      $group: {
+        _id: { username: "$username", titleSlug: "$titleSlug" },
+        score: { $first: "$score" },
+        date: { $first: "$date" },
+      },
+    },
+    {
+      $group: {
+        _id: { date: "$date", username: "$_id.username" },
+        total: { $sum: "$score" },
+      },
+    },
+    { $sort: { "_id.date": 1 } },
+  ]);
+  return rows.map((r) => ({
+    username: r._id.username as string,
+    date: r._id.date as string,
+    // Raw total: the chart prefix-sums buckets then rounds once at display
+    // (fmtScore), so pre-rounding here would drift up to ~1c per bucket.
+    total: r.total as number,
+  }));
+}
+
+/** Today's (or any date's) leaderboard: sum of scores for docs in that date bucket.
+ * Dedupes by username+titleSlug (highest score wins ties by _id order), same
+ * family of rules as getOverallScores/getScoreHistory, so legacy duplicate
+ * docs can't inflate day totals. */
 export async function getDayScores(date: string): Promise<TotalRow[]> {
   await connectDB();
   const totals = await Submission.aggregate([
-    { $match: { status: "Accepted", date } },
+    { $match: { status: "Accepted", date, username: { $type: "string" }, score: { $type: "number" } } },
+    // Same deterministic tiebreaks as getOverallScores/getScoreHistory
+    // (score desc, _id asc). No date key: the $match above pins a single date.
+    { $sort: { score: -1, _id: 1 } },
     {
       $group: {
-        _id: "$username",
+        _id: { username: "$username", titleSlug: "$titleSlug" },
+        score: { $first: "$score" },
+      },
+    },
+    {
+      $group: {
+        _id: "$_id.username",
         total: { $sum: "$score" },
         count: { $sum: 1 },
       },
@@ -93,7 +231,8 @@ export async function getDayScores(date: string): Promise<TotalRow[]> {
   ]);
   return totals.map((t) => ({
     username: t._id as string,
-    total: Math.round(t.total * 100) / 100,
+    // Raw total: display rounds once via fmtScore (tables + push text).
+    total: t.total as number,
     count: t.count as number,
   }));
 }

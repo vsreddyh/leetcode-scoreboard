@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { format, isToday, parseISO } from "date-fns";
+import { useEffect, useMemo, useState } from "react";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +17,34 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NotifyToggle } from "@/components/notify-toggle";
+import dynamic from "next/dynamic";
 import Link from "next/link";
+import { todayIST, formatLocalDayKey, parseDayBucketDate, isValidDayKey, fmtScore } from "@/lib/leetcode";
+
+const ScoreProgressChart = dynamic(() => import("@/components/score-progress-chart"), {
+  ssr: false,
+  // Mirrors the chart's own loading skeleton so the swap doesn't jump.
+  loading: () => (
+    <Card className="min-w-0">
+      <CardHeader className="p-4 sm:p-6 pb-2 sm:pb-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="text-sm sm:text-base">Score Progress</CardTitle>
+          <div className="flex flex-wrap gap-1" aria-hidden="true">
+            {["1D", "1W", "1M", "6M", "1Y", "ALL"].map((r) => (
+              <div key={r} className="h-7 w-8 rounded-md bg-muted" />
+            ))}
+          </div>
+        </div>
+        <p className="text-[11px] text-transparent pt-1 select-none" aria-hidden="true">
+          Loading
+        </p>
+      </CardHeader>
+      <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+        <Skeleton className="h-[300px] w-full" />
+      </CardContent>
+    </Card>
+  ),
+});
 
 interface Question {
   username: string;
@@ -42,15 +68,16 @@ const diffColor: Record<string, string> = {
 };
 
 export default function ScoreboardDashboard() {
-  // IST today string
-  const istToday = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Kolkata",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
+  // IST today string, frozen per mount so a midnight rollover mid-session
+  // can't leave the calendar and the progress chart disagreeing by a day.
+  // Tradeoff: after midnight IST this stays on the mount-time date (and "Jump
+  // to today" with it) until refresh — do not "fix" back to a live value.
+  const [istToday] = useState(() => todayIST());
 
-  const [selected, setSelected] = useState<Date | undefined>(() => parseISO(istToday));
+  const [selected, setSelected] = useState<Date | undefined>(() => parseDayBucketDate(istToday));
+  // Controlled calendar month so "Jump to today" scrolls into view even after
+  // the user paged elsewhere.
+  const [month, setMonth] = useState<Date>(() => parseDayBucketDate(istToday));
   const [dateStr, setDateStr] = useState(() => istToday);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [totals, setTotals] = useState<Total[]>([]);
@@ -60,32 +87,34 @@ export default function ScoreboardDashboard() {
 
   // Fetch overall + active dates on mount
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/overall");
+        const res = await fetch("/api/overall", { cache: "no-store" });
+        if (!res.ok) throw new Error(`overall ${res.status}`);
         const data = await res.json();
-        setTotals(data.totals ?? []);
-        setActiveDates(data.activeDates ?? []);
-      } catch {
-        /* empty */
+        if (!cancelled) {
+          setTotals(
+            Array.isArray(data.totals)
+              ? data.totals.filter(
+                  (t: { username?: unknown; total?: unknown }) =>
+                    typeof t?.username === "string" &&
+                    typeof t?.total === "number" &&
+                    Number.isFinite(t.total)
+                )
+              : []
+          );
+          setActiveDates(Array.isArray(data.activeDates) ? data.activeDates : []);
+        }
+      } catch (err) {
+        console.error(`[dashboard] overall fetch failed: ${err instanceof Error ? err.message : String(err)}`);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
-  }, []);
-
-  // Fetch day detail when date changes
-  const fetchDay = useCallback(async (d: string) => {
-    setDayLoading(true);
-    try {
-      const res = await fetch(`/api/day/${d}`);
-      const data = await res.json();
-      setQuestions(data.questions ?? []);
-    } catch {
-      setQuestions([]);
-    } finally {
-      setDayLoading(false);
-    }
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Fetch day detail on mount and whenever the selected date changes
@@ -94,10 +123,22 @@ export default function ScoreboardDashboard() {
     void (async () => {
       setDayLoading(true);
       try {
-        const res = await fetch(`/api/day/${dateStr}`);
+        const res = await fetch(`/api/day/${dateStr}`, { cache: "no-store" });
+        if (!res.ok) throw new Error(`day ${res.status}`);
         const data = await res.json();
-        if (!cancelled) setQuestions(data.questions ?? []);
-      } catch {
+        // Row-shape guard: one malformed row must not mis-group a day card.
+        // (Server coerces score via num(); username/titleSlug pass through raw.)
+        if (!cancelled)
+          setQuestions(
+            Array.isArray(data.questions)
+              ? data.questions.filter(
+                  (q: { username?: unknown; titleSlug?: unknown }) =>
+                    typeof q?.username === "string" && typeof q?.titleSlug === "string"
+                )
+              : []
+          );
+      } catch (err) {
+        console.error(`[dashboard] day fetch failed: ${err instanceof Error ? err.message : String(err)}`);
         if (!cancelled) setQuestions([]);
       } finally {
         if (!cancelled) setDayLoading(false);
@@ -110,9 +151,11 @@ export default function ScoreboardDashboard() {
 
   function onDayClick(day: Date) {
     setSelected(day);
-    const ds = format(day, "yyyy-MM-dd");
+    setMonth(day);
+    const ds = formatLocalDayKey(day);
+    // The [dateStr] effect below owns fetching; no direct fetch here so two
+    // concurrent requests can't race.
     setDateStr(ds);
-    fetchDay(ds);
   }
 
   // Group questions by user for the selected day
@@ -121,15 +164,36 @@ export default function ScoreboardDashboard() {
     return acc;
   }, {});
 
-  // Day totals per user for selected date
-  const dayTotals = Object.entries(byUser).map(([user, qs]) => ({
-    user,
-    count: qs.length,
-    total: Math.round(qs.reduce((s, q) => s + q.score, 0) * 100) / 100,
-  }));
+  // Day totals per user for selected date (raw sums, finite-guarded so one
+  // string-typed legacy score can't turn the accumulator into concat;
+  // fmtScore rounds once at render — same single-rounding rule as chart cum).
+  // Sorted by total desc like the Overall Leaderboard (insertion order would
+  // rank by highest single solve instead).
+  const dayTotals = Object.entries(byUser)
+    .map(([user, qs]) => ({
+      user,
+      count: qs.length,
+      total: qs.reduce(
+        (s, q) => s + (typeof q.score === "number" && Number.isFinite(q.score) ? q.score : 0),
+        0
+      ),
+    }))
+    .sort((a, b) => b.total - a.total);
 
-  // Days with data for calendar highlighting
-  const dataDays = activeDates.map((d) => parseISO(d));
+  // Days with data for calendar highlighting (memoized: new Date[] identity
+  // every render would make Calendar re-resolve modifiers each time).
+  // isValidDayKey mirrors the server filter so a future server regression
+  // can't feed the calendar an unparseable bucket. The explicit typeof keeps
+  // the invariant structural instead of relying on RegExp coercion order.
+  const dataDays = useMemo(
+    () => activeDates.filter((d) => typeof d === "string" && isValidDayKey(d)).map((d) => parseDayBucketDate(d)),
+    [activeDates]
+  );
+  // IST-primary by design: the whole board is IST-bucketed (header "Today",
+  // dateStr comparisons, chart axis), so the marker follows the IST bucket even
+  // when it differs from the viewer's local day. Local-midnight construction
+  // keeps the highlighted cell aligned with the calendar rendering.
+  const todayMarker = useMemo(() => parseDayBucketDate(istToday), [istToday]);
 
   return (
     <div className="flex-1 w-full max-w-5xl mx-auto px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
@@ -154,7 +218,9 @@ export default function ScoreboardDashboard() {
 
       <Separator className="my-4 sm:my-6" />
 
-      <div className="grid gap-4 sm:gap-6 lg:grid-cols-[300px_minmax(0,1fr)]">
+      <ScoreProgressChart today={istToday} />
+
+      <div className="grid gap-4 sm:gap-6 lg:grid-cols-[300px_minmax(0,1fr)] mt-4 sm:mt-6">
         {/* Calendar sidebar */}
         <div className="w-full lg:w-auto flex justify-center lg:justify-start lg:sticky lg:top-4 self-start">
           <Card className="w-full max-w-[340px] sm:w-fit sm:max-w-none">
@@ -166,16 +232,17 @@ export default function ScoreboardDashboard() {
                   mode="single"
                   selected={selected}
                   onDayClick={onDayClick}
+                  month={month}
+                  onMonthChange={setMonth}
                   className="rounded-md max-w-full"
                   modifiers={{
                     hasData: dataDays,
-                    today: parseISO(istToday),
+                    today: todayMarker,
                   }}
                   modifiersClassNames={{
                     hasData:
                       "bg-primary/10 font-semibold [&>button]:aria-selected:bg-primary",
                   }}
-                  defaultMonth={selected}
                 />
               )}
             </CardContent>
@@ -189,8 +256,8 @@ export default function ScoreboardDashboard() {
             <h2 className="text-base sm:text-lg font-semibold">
               {dateStr === istToday ? "Today" : dateStr}
             </h2>
-            {!isToday(selected ?? new Date()) && (
-              <Button variant="ghost" size="sm" onClick={() => onDayClick(parseISO(istToday))}>
+            {dateStr !== istToday && (
+              <Button variant="ghost" size="sm" onClick={() => onDayClick(parseDayBucketDate(istToday))}>
                 Jump to today
               </Button>
             )}
@@ -206,7 +273,7 @@ export default function ScoreboardDashboard() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="p-3 pt-0 sm:p-6 sm:pt-0">
-                    <p className="text-lg sm:text-2xl font-bold tabular-nums">{dt.total}</p>
+                    <p className="text-lg sm:text-2xl font-bold tabular-nums">{fmtScore(dt.total)}</p>
                     <p className="text-[11px] sm:text-xs text-muted-foreground">
                       {dt.count} problem{dt.count === 1 ? "" : "s"}
                     </p>
@@ -280,7 +347,7 @@ export default function ScoreboardDashboard() {
                               {q.acRate != null ? `${q.acRate.toFixed(1)}%` : "—"}
                             </TableCell>
                             <TableCell className="text-right font-semibold tabular-nums">
-                              {q.score}
+                              {fmtScore(q.score)}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -300,7 +367,7 @@ export default function ScoreboardDashboard() {
                             {q.username}
                           </span>
                           <span className="text-sm font-bold tabular-nums shrink-0">
-                            {q.score} pts
+                            {fmtScore(q.score)} pts
                           </span>
                         </div>
                         <a
@@ -365,10 +432,10 @@ export default function ScoreboardDashboard() {
                             {t.username}
                           </TableCell>
                           <TableCell className="text-right font-semibold tabular-nums whitespace-nowrap">
-                            {t.total}
+                            {fmtScore(t.total)}
                           </TableCell>
                           <TableCell className="text-right text-muted-foreground tabular-nums">
-                            {t.count}
+                            {Number.isFinite(t.count) ? t.count : 0}
                           </TableCell>
                         </TableRow>
                       ))}
