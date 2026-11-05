@@ -200,18 +200,21 @@ export default function ScoreProgressChart({ today }: { today: string }) {
     return { users, dates, cum };
   }, [history, todayStr]);
 
-  // Growth % over the selected duration window (same span math as the chart
-  // window below). Baseline is the total just BEFORE the window so the gain
-  // during the window is (end - prev) / prev. Zero-baseline: 0 pts → "0%",
-  // 0 → positive is new (Infinity sentinel, rendered as "new").
-  const growth = useMemo(() => {
-    if (full.dates.length === 0) return [] as { user: string; pct: number | null; isNew: boolean }[];
+  // Growth % over the selected duration window. Unlike the chart (which needs
+  // ≥2 points to draw a line, hence max(2, days)), growth uses the TRUE labeled
+  // duration: 1D = today's gain vs yesterday's close. Baseline is the total
+  // just BEFORE the window. When the window covers the whole axis (ALL, or
+  // history shorter than the range) there is no baseline, so % change vs 0 is
+  // undefined and renders as "—" — never "new". Zero-baseline with a real
+  // baseline (user at 0 before the window, positive at the end) renders "new".
+  const growth = useMemo<{ user: string; pct: number | null; isNew: boolean }[]>(() => {
+    if (full.dates.length === 0) return [];
     const last = full.dates.length - 1;
     const days = RANGES.find((r) => r.key === range)?.days ?? null;
-    const span = days == null ? null : Math.min(full.dates.length, Math.max(2, days));
-    const startIdx = span == null ? 0 : Math.max(0, last - span + 1);
+    const startIdx = days == null ? 0 : Math.max(0, last - Math.min(full.dates.length, days) + 1);
+    if (startIdx === 0) return full.users.map((u) => ({ user: u, pct: null, isNew: false }));
     return full.users.map((u, i) => {
-      const prev = startIdx > 0 ? full.cum[i][startIdx - 1] : 0;
+      const prev = full.cum[i][startIdx - 1];
       const end = full.cum[i][last];
       if (!Number.isFinite(prev) || !Number.isFinite(end)) return { user: u, pct: null, isNew: false };
       if (prev === 0) {
