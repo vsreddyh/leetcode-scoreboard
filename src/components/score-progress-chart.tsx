@@ -200,6 +200,33 @@ export default function ScoreProgressChart({ today }: { today: string }) {
     return { users, dates, cum };
   }, [history, todayStr]);
 
+  // Growth % over the selected duration window (same span math as the chart
+  // window below). Baseline is the total just BEFORE the window so the gain
+  // during the window is (end - prev) / prev. Zero-baseline: 0 pts → "0%",
+  // 0 → positive is new (Infinity sentinel, rendered as "new").
+  const growth = useMemo(() => {
+    if (full.dates.length === 0) return [] as { user: string; pct: number | null; isNew: boolean }[];
+    const last = full.dates.length - 1;
+    const days = RANGES.find((r) => r.key === range)?.days ?? null;
+    const span = days == null ? null : Math.min(full.dates.length, Math.max(2, days));
+    const startIdx = span == null ? 0 : Math.max(0, last - span + 1);
+    return full.users.map((u, i) => {
+      const prev = startIdx > 0 ? full.cum[i][startIdx - 1] : 0;
+      const end = full.cum[i][last];
+      if (!Number.isFinite(prev) || !Number.isFinite(end)) return { user: u, pct: null, isNew: false };
+      if (prev === 0) {
+        return end === 0 ? { user: u, pct: 0, isNew: false } : { user: u, pct: null, isNew: true };
+      }
+      return { user: u, pct: ((end - prev) / prev) * 100, isNew: false };
+    });
+  }, [full, range]);
+
+  function formatGrowth(pct: number | null, isNew: boolean): string {
+    if (isNew) return "new";
+    if (pct == null || !Number.isFinite(pct)) return "—";
+    return `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`;
+  }
+
   // Chart instance lifecycle: init once, resize with container, dispose on unmount.
   // Deps cover the whole model identity: any re-fetch that changes users OR the
   // axis range re-creates the instance, which resets the zoom key so the range
@@ -298,6 +325,11 @@ export default function ScoreProgressChart({ today }: { today: string }) {
         textStyle: { color: axisColor },
         pageIconColor: axisColor,
         pageTextStyle: { color: axisColor },
+        formatter: (name: string) => {
+          const g = growth.find((x) => x.user === name);
+          if (!g) return name;
+          return `${name} ${formatGrowth(g.pct, g.isNew)}`;
+        },
       },
       grid: { left: 48, right: 16, top: 36, bottom: 64, containLabel: true },
       xAxis: {
@@ -368,7 +400,7 @@ export default function ScoreProgressChart({ today }: { today: string }) {
       // (start/end persist when omitted) and refreshes all chrome colors.
       chart.setOption(option);
     }
-  }, [full, range, zoomNonce, resolvedTheme]);
+  }, [full, range, zoomNonce, resolvedTheme, growth]);
 
   if (loading) {
     return (
@@ -442,6 +474,37 @@ export default function ScoreProgressChart({ today }: { today: string }) {
           Cumulative totals • pinch or slider to zoom • drag to pan • re-click a range to
           reset
         </p>
+        {interactive && growth.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-1.5" aria-live="polite" aria-label={`Growth in ${range}`}>
+            {growth.map((g) => (
+              <span
+                key={g.user}
+                className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] tabular-nums"
+                title={`Growth in ${range}`}
+              >
+                <span
+                  className="h-2 w-2 rounded-full shrink-0"
+                  style={{ backgroundColor: userColor(g.user) }}
+                  aria-hidden="true"
+                />
+                <span className="max-w-[120px] truncate font-medium">{g.user}</span>
+                <span
+                  className={
+                    g.isNew
+                      ? "font-semibold text-sky-600 dark:text-sky-400"
+                      : g.pct == null
+                        ? "text-muted-foreground"
+                        : g.pct > 0
+                          ? "font-semibold text-emerald-600 dark:text-emerald-400"
+                          : "text-muted-foreground"
+                  }
+                >
+                  {formatGrowth(g.pct, g.isNew)}
+                </span>
+              </span>
+            ))}
+          </div>
+        )}
       </CardHeader>
       <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
         {fetchError && !refreshing ? (
