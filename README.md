@@ -74,10 +74,11 @@ curl "http://localhost:3000/api/sync?secret=$CRON_SECRET"
   (`matchedUser.submitStatsGlobal` + `userContestRanking`) with `Access-Control-Allow-Origin: *`
   so the static site can fetch it directly. Caching is per-instance in-memory (1h TTL)
   plus CDN edge caching (`s-maxage=3600, stale-while-revalidate=86400`); a repeat hit
-  on another serverless instance can still MISS upstream. Transient upstream failures
-  (429/403/network) serve last-good stale JSON (`stale: true`); an authoritative
-  "user not found" evicts the entry and returns 404; other failures return a clean
-  4xx/5xx error body (never a stack trace). `X-Cache: HIT/MISS` is diagnostic only.
+  on another serverless instance can still MISS upstream. Failure mode: any upstream
+  error except authoritative "user not found" serves last-good stale JSON (`stale: true`)
+  when a cache entry exists, otherwise a clean 503/502 error body; an authoritative
+  "user not found" evicts the entry and returns 404 even when cached. Error bodies
+  never include stack traces. `X-Cache: HIT/MISS` is diagnostic only.
   Verify with `curl -i` (plain `curl` hides response headers):
   `curl -i '<deploy>/api/public/stats?username=<handle>'`. Optional `PUBLIC_STATS_ALLOWLIST`
   env (comma-separated handles) restricts proxied usernames; unset = any valid handle.
