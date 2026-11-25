@@ -18,6 +18,7 @@ Next.js + MongoDB scoreboard. **Score per Accepted problem = 100 − acceptance 
 | `GET /api/overall` | public | totals + active dates from Mongo |
 | `GET /api/history` | public | per-user per-day totals for the progress chart |
 | `GET /api/day/[date]` | public | per-day scores from Mongo |
+| `GET /api/public/stats?username=<handle>` | public (CORS `*`) | live LeetCode solved count + contest rating proxy for the portfolio; cached 1h (`s-maxage=3600, stale-while-revalidate=86400`); per-IP rate limit (60/min, `PUBLIC_STATS_RATE_LIMIT`); `rating`/`globalRanking`/`topPercentage` are `number \\| null` (null when the user has no contest history); optional `PUBLIC_STATS_ALLOWLIST` |
 | `GET/POST /api/sync` | admin cookie, `?secret=` or `Bearer CRON_SECRET` | sync all tracked users |
 | `GET/POST/DELETE /api/admin/users` | admin cookie | tracked-user CRUD |
 
@@ -69,3 +70,23 @@ curl "http://localhost:3000/api/sync?secret=$CRON_SECRET"
 - EOD refresh: auto-runs inside the first sync at/after 23:30 IST (once per day), re-fetching `acRate` for **that day's (IST) questions** and recomputing scores.
 - `recentSubmissionList` caps at 20/user/sync; history accumulates in Mongo over time.
 - Polite throttling (~300ms between problem lookups, 1s between users); `429` surfaces as sync failure, retry next tick.
+- Portfolio live counts: `GET /api/public/stats?username=<handle>` proxies LeetCode
+  (`matchedUser.submitStatsGlobal` + `userContestRanking`) with `Access-Control-Allow-Origin: *`
+  so the static site can fetch it directly. Caching is per-instance in-memory (1h TTL)
+  plus CDN edge caching of successful GETs (`s-maxage=3600,
+  stale-while-revalidate=86400`); a repeat hit on another serverless instance can
+  still MISS upstream. Stale fallbacks and all errors are `no-store`, so misses
+  after cache expiry hit origin every time (no edge shielding during a LeetCode
+  outage). Failure mode: any upstream error except authoritative "user not found"
+  error except authoritative "user not found" serves last-good stale JSON (`stale: true`)
+  when a cache entry exists, otherwise a clean 503/502 error body; an authoritative
+  "user not found" evicts the entry and returns 404 even when cached. Error bodies
+  never include stack traces. `X-Cache: HIT/MISS` is diagnostic only.
+  Rate limiting: per-IP fixed window, 60 req/min by default (`PUBLIC_STATS_RATE_LIMIT`
+  overrides), `429 + Retry-After` when exceeded with `X-RateLimit-Limit/Remaining`
+  on all GET responses (`OPTIONS` preflight sends CORS headers only). Per-instance
+  and `X-Forwarded-For`-based, so rotatable IPs can dodge
+  it — pair with `PUBLIC_STATS_ALLOWLIST` (unset or blank = allow all) for a hard restriction.
+  Verify with `curl -i` (plain `curl` hides response headers):
+  `curl -i '<deploy>/api/public/stats?username=<handle>'`. Optional `PUBLIC_STATS_ALLOWLIST`
+  env (comma-separated handles) restricts proxied usernames; unset = any valid handle.
