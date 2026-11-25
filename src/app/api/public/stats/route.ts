@@ -30,7 +30,11 @@ function jsonWithCors(body: unknown, init?: { status?: number; cache?: boolean; 
 }
 
 function errorWithCors(message: string, status: number) {
-  return NextResponse.json({ error: message }, { status, headers: { ...corsHeaders(), "Cache-Control": "no-store" } });
+  // X-Cache is diagnostic only: errors never serve cached data, so always MISS.
+  return NextResponse.json(
+    { error: message },
+    { status, headers: { ...corsHeaders(), "Cache-Control": "no-store", "X-Cache": "MISS" } }
+  );
 }
 
 /** Optional abuse guard: set PUBLIC_STATS_ALLOWLIST="alice,bob" to restrict proxied usernames. */
@@ -51,8 +55,9 @@ interface CacheEntry {
   expiresAt: number;
 }
 
-/** In-memory last-good cache: absorbs repeat hits inside the CDN window and
- * serves stale JSON when LeetCode 429s/403s instead of erroring the portfolio. */
+/** Per-instance last-good cache: absorbs same-instance repeat hits inside the CDN
+ * window (cross-instance hits rely on the CDN edge via s-maxage). Transient
+ * upstream failures serve stale JSON; authoritative 404s evict instead. */
 const cache = new Map<string, CacheEntry>();
 
 export function __clearPublicStatsCacheForTests() {
@@ -76,7 +81,8 @@ export async function GET(req: Request) {
   const now = Date.now();
   const cached = cache.get(key);
   if (cached && cached.expiresAt > now) {
-    return jsonWithCors(cached.body, { cache: true, hit: true });
+    // Echo the caller's casing; numbers/updatedAt stay cached.
+    return jsonWithCors({ ...cached.body, username: raw }, { cache: true, hit: true });
   }
 
   try {
@@ -93,13 +99,18 @@ export async function GET(req: Request) {
     return jsonWithCors(body, { cache: true, hit: false });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    // Serve last-good (even expired) so the portfolio renders stale numbers, not an error.
-    if (cached) {
-      return jsonWithCors({ ...cached.body, stale: true }, { cache: false, hit: true });
-    }
     console.error(`[public/stats] failed for ${raw}: ${msg}`);
-    if (msg.toLowerCase().includes("not found"))
+    // Authoritative "user does not exist" beats any cached entry: evict so a
+    // renamed/deleted handle flips to 404 instead of serving stale forever.
+    if (msg.toLowerCase().includes("not found")) {
+      cache.delete(key);
       return errorWithCors(`LeetCode user not found: ${raw}`, 404);
+    }
+    // Transient upstream failure: serve last-good (even expired) so the
+    // portfolio renders stale numbers, not an error.
+    if (cached) {
+      return jsonWithCors({ ...cached.body, username: raw, stale: true }, { cache: false, hit: true });
+    }
     if (msg.includes("429") || msg.toLowerCase().includes("rate limited"))
       return errorWithCors("LeetCode rate limited (429) — retry later", 503);
     if (msg.includes("403") || msg.toLowerCase().includes("forbidden"))
