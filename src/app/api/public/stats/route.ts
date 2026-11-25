@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getPublicStats } from "@/lib/leetcode";
+import { getPublicStats, LeetCodeUserNotFoundError } from "@/lib/leetcode";
 
 export const dynamic = "force-dynamic";
 
@@ -54,7 +54,8 @@ function errorWithCors(
   return NextResponse.json({ error: message }, { status, headers });
 }
 
-/** Optional abuse guard: set PUBLIC_STATS_ALLOWLIST="alice,bob" to restrict proxied usernames. */
+/** Optional abuse guard: set PUBLIC_STATS_ALLOWLIST="alice,bob" to restrict proxied
+ * usernames. Unset or blank (empty/whitespace/commas-only) = allow all. */
 function allowlist(): Set<string> | null {
   const raw = process.env.PUBLIC_STATS_ALLOWLIST?.trim();
   if (!raw) return null;
@@ -172,7 +173,9 @@ export async function GET(req: Request) {
     console.error(`[public/stats] failed for ${raw}: ${msg}`);
     // Authoritative "user does not exist" beats any cached entry: evict so a
     // renamed/deleted handle flips to 404 instead of serving stale forever.
-    if (msg.toLowerCase().includes("not found")) {
+    // Typed check (not substring): upstream HTTP/GraphQL bodies may mention
+    // "not found" for unrelated transient reasons — those serve stale below.
+    if (err instanceof LeetCodeUserNotFoundError) {
       cache.delete(key);
       return errorWithCors(`LeetCode user not found: ${raw}`, 404, rateLimit);
     }

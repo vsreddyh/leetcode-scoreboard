@@ -56,13 +56,25 @@ export interface PublicStats {
   topPercentage: number | null;
 }
 
+/** Thrown when LeetCode returns no matchedUser for the handle. Distinct type so
+ * callers can tell "authoritative unknown user" (evict cache, 404) apart from
+ * upstream bodies that merely mention "not found" (serve stale). */
+export class LeetCodeUserNotFoundError extends Error {
+  username: string;
+  constructor(username: string) {
+    super(`LeetCode user not found: ${username}`);
+    this.name = "LeetCodeUserNotFoundError";
+    this.username = username;
+  }
+}
+
 export async function getPublicStats(username: string): Promise<PublicStats> {
   const data = await gql(
     `query($username:String!){matchedUser(username:$username){submitStatsGlobal{acSubmissionNum{difficulty count}}}userContestRanking(username:$username){rating globalRanking topPercentage}}`,
     { username }
   );
   const matchedUser = data?.data?.matchedUser;
-  if (!matchedUser) throw new Error(`LeetCode user not found: ${username}`);
+  if (!matchedUser) throw new LeetCodeUserNotFoundError(username);
   const nums: { difficulty?: string; count?: number }[] =
     matchedUser?.submitStatsGlobal?.acSubmissionNum ?? [];
   const all = nums.find((n) => n.difficulty === "All")?.count;

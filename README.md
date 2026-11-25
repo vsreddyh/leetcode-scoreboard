@@ -73,16 +73,20 @@ curl "http://localhost:3000/api/sync?secret=$CRON_SECRET"
 - Portfolio live counts: `GET /api/public/stats?username=<handle>` proxies LeetCode
   (`matchedUser.submitStatsGlobal` + `userContestRanking`) with `Access-Control-Allow-Origin: *`
   so the static site can fetch it directly. Caching is per-instance in-memory (1h TTL)
-  plus CDN edge caching (`s-maxage=3600, stale-while-revalidate=86400`); a repeat hit
-  on another serverless instance can still MISS upstream. Failure mode: any upstream
+  plus CDN edge caching of successful GETs (`s-maxage=3600,
+  stale-while-revalidate=86400`); a repeat hit on another serverless instance can
+  still MISS upstream. Stale fallbacks and all errors are `no-store`, so misses
+  after cache expiry hit origin every time (no edge shielding during a LeetCode
+  outage). Failure mode: any upstream error except authoritative "user not found"
   error except authoritative "user not found" serves last-good stale JSON (`stale: true`)
   when a cache entry exists, otherwise a clean 503/502 error body; an authoritative
   "user not found" evicts the entry and returns 404 even when cached. Error bodies
   never include stack traces. `X-Cache: HIT/MISS` is diagnostic only.
   Rate limiting: per-IP fixed window, 60 req/min by default (`PUBLIC_STATS_RATE_LIMIT`
   overrides), `429 + Retry-After` when exceeded with `X-RateLimit-Limit/Remaining`
-  on responses. Per-instance and `X-Forwarded-For`-based, so rotatable IPs can dodge
-  it — pair with `PUBLIC_STATS_ALLOWLIST` for a hard restriction.
+  on all GET responses (`OPTIONS` preflight sends CORS headers only). Per-instance
+  and `X-Forwarded-For`-based, so rotatable IPs can dodge
+  it — pair with `PUBLIC_STATS_ALLOWLIST` (unset or blank = allow all) for a hard restriction.
   Verify with `curl -i` (plain `curl` hides response headers):
   `curl -i '<deploy>/api/public/stats?username=<handle>'`. Optional `PUBLIC_STATS_ALLOWLIST`
   env (comma-separated handles) restricts proxied usernames; unset = any valid handle.
