@@ -36,12 +36,22 @@ function jsonWithCors(
   return NextResponse.json(body, { status: init?.status ?? 200, headers });
 }
 
-function errorWithCors(message: string, status: number) {
+function errorWithCors(
+  message: string,
+  status: number,
+  rateLimit?: { limit: number; remaining: number }
+) {
   // X-Cache is diagnostic only: errors never serve cached data, so always MISS.
-  return NextResponse.json(
-    { error: message },
-    { status, headers: { ...corsHeaders(), "Cache-Control": "no-store", "X-Cache": "MISS" } }
-  );
+  const headers: Record<string, string> = {
+    ...corsHeaders(),
+    "Cache-Control": "no-store",
+    "X-Cache": "MISS",
+  };
+  if (rateLimit) {
+    headers["X-RateLimit-Limit"] = String(rateLimit.limit);
+    headers["X-RateLimit-Remaining"] = String(rateLimit.remaining);
+  }
+  return NextResponse.json({ error: message }, { status, headers });
 }
 
 /** Optional abuse guard: set PUBLIC_STATS_ALLOWLIST="alice,bob" to restrict proxied usernames. */
@@ -131,13 +141,13 @@ export async function GET(req: Request) {
   }
   const rateLimit = { limit: max, remaining: rl.remaining };
   const raw = new URL(req.url).searchParams.get("username")?.trim() ?? "";
-  if (!raw) return errorWithCors("Missing required query param: ?username=<leetcode-handle>", 400);
+  if (!raw) return errorWithCors("Missing required query param: ?username=<leetcode-handle>", 400, rateLimit);
   if (!USERNAME_RE.test(raw))
-    return errorWithCors("Invalid username: use 1-30 letters, numbers, - or _", 400);
+    return errorWithCors("Invalid username: use 1-30 letters, numbers, - or _", 400, rateLimit);
 
   const allowed = allowlist();
   const key = raw.toLowerCase();
-  if (allowed && !allowed.has(key)) return errorWithCors("Username not allowed", 403);
+  if (allowed && !allowed.has(key)) return errorWithCors("Username not allowed", 403, rateLimit);
 
   const cached = cache.get(key);
   if (cached && cached.expiresAt > now) {
@@ -164,7 +174,7 @@ export async function GET(req: Request) {
     // renamed/deleted handle flips to 404 instead of serving stale forever.
     if (msg.toLowerCase().includes("not found")) {
       cache.delete(key);
-      return errorWithCors(`LeetCode user not found: ${raw}`, 404);
+      return errorWithCors(`LeetCode user not found: ${raw}`, 404, rateLimit);
     }
     // Any other upstream error: serve last-good (even expired) so the
     // portfolio renders stale numbers, not an error.
@@ -172,11 +182,11 @@ export async function GET(req: Request) {
       return jsonWithCors({ ...cached.body, username: raw, stale: true }, { cache: false, hit: true, rateLimit });
     }
     if (msg.includes("429") || msg.toLowerCase().includes("rate limited"))
-      return errorWithCors("LeetCode rate limited (429) — retry later", 503);
+      return errorWithCors("LeetCode rate limited (429) — retry later", 503, rateLimit);
     if (msg.includes("403") || msg.toLowerCase().includes("forbidden"))
-      return errorWithCors("LeetCode blocked the upstream request (403) — retry later", 503);
+      return errorWithCors("LeetCode blocked the upstream request (403) — retry later", 503, rateLimit);
     if (msg.toLowerCase().includes("network error"))
-      return errorWithCors("LeetCode unreachable — retry later", 503);
-    return errorWithCors("Failed to fetch LeetCode stats — retry later", 502);
+      return errorWithCors("LeetCode unreachable — retry later", 503, rateLimit);
+    return errorWithCors("Failed to fetch LeetCode stats — retry later", 502, rateLimit);
   }
 }
