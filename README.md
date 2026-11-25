@@ -18,6 +18,7 @@ Next.js + MongoDB scoreboard. **Score per Accepted problem = 100 − acceptance 
 | `GET /api/overall` | public | totals + active dates from Mongo |
 | `GET /api/history` | public | per-user per-day totals for the progress chart |
 | `GET /api/day/[date]` | public | per-day scores from Mongo |
+| `GET /api/public/stats?username=<handle>` | public (CORS `*`) | live LeetCode solved count + contest rating proxy for the portfolio; cached 1h (`s-maxage=3600, stale-while-revalidate=86400`); optional `PUBLIC_STATS_ALLOWLIST` |
 | `GET/POST /api/sync` | admin cookie, `?secret=` or `Bearer CRON_SECRET` | sync all tracked users |
 | `GET/POST/DELETE /api/admin/users` | admin cookie | tracked-user CRUD |
 
@@ -69,3 +70,9 @@ curl "http://localhost:3000/api/sync?secret=$CRON_SECRET"
 - EOD refresh: auto-runs inside the first sync at/after 23:30 IST (once per day), re-fetching `acRate` for **that day's (IST) questions** and recomputing scores.
 - `recentSubmissionList` caps at 20/user/sync; history accumulates in Mongo over time.
 - Polite throttling (~300ms between problem lookups, 1s between users); `429` surfaces as sync failure, retry next tick.
+- Portfolio live counts: `GET /api/public/stats?username=<handle>` proxies LeetCode
+  (`matchedUser.submitStatsGlobal` + `userContestRanking`) with `Access-Control-Allow-Origin: *`
+  so the static site can fetch it directly. In-memory + CDN cache (`s-maxage=3600,
+  stale-while-revalidate=86400`); serves last-good stale JSON on upstream 429/403,
+  else a clean 4xx/5xx error (never a stack trace). Optional `PUBLIC_STATS_ALLOWLIST`
+  env (comma-separated handles) restricts proxied usernames; unset = any valid handle.
