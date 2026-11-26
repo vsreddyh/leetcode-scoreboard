@@ -30,7 +30,7 @@ const ScoreProgressChart = dynamic(() => import("@/components/score-progress-cha
         <div className="flex flex-wrap items-center justify-between gap-2">
           <CardTitle className="text-sm sm:text-base">Score Progress</CardTitle>
           <div className="flex flex-wrap gap-1" aria-hidden="true">
-            {["1D", "1W", "1M", "6M", "1Y", "ALL"].map((r) => (
+            {["1D", "1W", "1M", "3M", "6M", "1Y", "ALL"].map((r) => (
               <div key={r} className="h-7 w-8 rounded-md bg-muted" />
             ))}
           </div>
