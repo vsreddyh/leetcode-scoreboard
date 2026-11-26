@@ -39,7 +39,7 @@ type ECOption = echarts.ComposeOption<
 
 import type { DailyRow } from "@/lib/scores";
 
-type RangeKey = "1D" | "1W" | "1M" | "6M" | "1Y" | "ALL";
+type RangeKey = "1D" | "1W" | "1M" | "3M" | "6M" | "1Y" | "ALL";
 
 interface ProgressModel {
   users: string[];
@@ -51,6 +51,7 @@ const RANGES: { key: RangeKey; days: number | null }[] = [
   { key: "1D", days: 1 },
   { key: "1W", days: 7 },
   { key: "1M", days: 30 },
+  { key: "3M", days: 90 },
   { key: "6M", days: 182 },
   { key: "1Y", days: 365 },
   { key: "ALL", days: null },
